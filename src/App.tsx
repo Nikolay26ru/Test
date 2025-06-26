@@ -1,9 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { LoginScreen } from './components/Auth/LoginScreen';
+import { EnhancedLoginScreen } from './components/Auth/EnhancedLoginScreen';
 import { AuthCallback } from './components/Auth/AuthCallback';
-import { Dashboard } from './components/Dashboard/Dashboard';
+import { EnhancedDashboard } from './components/Dashboard/EnhancedDashboard';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -23,7 +23,7 @@ const AppContent: React.FC = () => {
     <Routes>
       <Route 
         path="/auth" 
-        element={user ? <Navigate to="/" replace /> : <LoginScreen />} 
+        element={user ? <Navigate to="/" replace /> : <EnhancedLoginScreen />} 
       />
       <Route 
         path="/auth/callback" 
@@ -31,7 +31,7 @@ const AppContent: React.FC = () => {
       />
       <Route 
         path="/" 
-        element={user ? <Dashboard /> : <Navigate to="/auth" replace />} 
+        element={user ? <EnhancedDashboard /> : <Navigate to="/auth" replace />} 
       />
       <Route 
         path="*" 
