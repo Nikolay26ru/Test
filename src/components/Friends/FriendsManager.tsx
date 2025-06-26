@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, UserMinus, Check, X, Search, Mail } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Users, UserPlus, UserMinus, Check, X, Search, Mail, ArrowLeft } from 'lucide-react';
 import { FriendsService } from '../../lib/friendsService';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,6 +8,7 @@ import type { User, FriendRequest, FriendshipStatus } from '../../types';
 
 export const FriendsManager: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [friends, setFriends] = useState<User[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]);
@@ -190,188 +192,209 @@ export const FriendsManager: React.FC = () => {
   );
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Message */}
-      {message && (
-        <div className={`mb-4 p-3 rounded-lg ${
-          message.includes('Ошибка') || message.includes('Не удалось') 
-            ? 'bg-red-100 text-red-700' 
-            : 'bg-green-100 text-green-700'
-        }`}>
-          {message}
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { id: 'friends', label: 'Друзья', count: friends.length },
-              { id: 'requests', label: 'Запросы', count: incomingRequests.length },
-              { id: 'search', label: 'Поиск', count: null }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
-                  activeTab === tab.id
-                    ? 'border-purple-500 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span>{tab.label}</span>
-                {tab.count !== null && tab.count > 0 && (
-                  <span className="bg-purple-100 text-purple-600 px-2 py-1 rounded-full text-xs">
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header with Back Button */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => navigate('/')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Вернуться на главную"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Друзья</h1>
+              <p className="text-gray-600">Управляйте своими друзьями и запросами</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Content */}
-      {activeTab === 'friends' && (
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Мои друзья ({friends.length})
-          </h2>
-          
-          {friends.length === 0 ? (
-            <div className="text-center py-8">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">У вас пока нет друзей</p>
-              <p className="text-sm text-gray-500">Найдите друзей через поиск</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {friends.map((friend) => (
-                <UserCard
-                  key={friend.id}
-                  user={friend}
-                  showActions={true}
-                  actionType="remove"
-                  onAction={() => handleRemoveFriend(friend.id, friend.name)}
-                />
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Message */}
+        {message && (
+          <div className={`mb-4 p-3 rounded-lg ${
+            message.includes('Ошибка') || message.includes('Не удалось') 
+              ? 'bg-red-100 text-red-700' 
+              : 'bg-green-100 text-green-700'
+          }`}>
+            {message}
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              {[
+                { id: 'friends', label: 'Друзья', count: friends.length },
+                { id: 'requests', label: 'Запросы', count: incomingRequests.length },
+                { id: 'search', label: 'Поиск', count: null }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                    activeTab === tab.id
+                      ? 'border-purple-500 text-purple-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {tab.count !== null && tab.count > 0 && (
+                    <span className="bg-purple-100 text-purple-600 px-2 py-1 rounded-full text-xs">
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
               ))}
-            </div>
-          )}
+            </nav>
+          </div>
         </div>
-      )}
 
-      {activeTab === 'requests' && (
-        <div className="space-y-6">
-          {/* Incoming Requests */}
+        {/* Content */}
+        {activeTab === 'friends' && (
           <div>
             <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Входящие запросы ({incomingRequests.length})
+              Мои друзья ({friends.length})
             </h2>
             
-            {incomingRequests.length === 0 ? (
-              <div className="text-center py-6">
-                <Mail className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Нет входящих запросов</p>
+            {friends.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">У вас пока нет друзей</p>
+                <p className="text-sm text-gray-500">Найдите друзей через поиск</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {incomingRequests.map((request) => (
+                {friends.map((friend) => (
                   <UserCard
-                    key={request.id}
-                    user={request.sender!}
+                    key={friend.id}
+                    user={friend}
                     showActions={true}
-                    actionType="accept"
-                    requestId={request.id}
+                    actionType="remove"
+                    onAction={() => handleRemoveFriend(friend.id, friend.name)}
                   />
                 ))}
               </div>
             )}
           </div>
+        )}
 
-          {/* Outgoing Requests */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Исходящие запросы ({outgoingRequests.length})
-            </h2>
-            
-            {outgoingRequests.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-gray-600">Нет исходящих запросов</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {outgoingRequests.map((request) => (
-                  <UserCard
-                    key={request.id}
-                    user={request.receiver!}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'search' && (
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Поиск пользователей
-          </h2>
-          
-          {/* Search Form */}
-          <div className="mb-6">
-            <div className="flex space-x-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
-                  placeholder="Поиск по имени или username..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-              <button
-                onClick={searchUsers}
-                disabled={loading || !searchQuery.trim()}
-                className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Поиск...' : 'Найти'}
-              </button>
-            </div>
-          </div>
-
-          {/* Search Results */}
-          {searchResults.length > 0 && (
+        {activeTab === 'requests' && (
+          <div className="space-y-6">
+            {/* Incoming Requests */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Результаты поиска ({searchResults.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {searchResults.map((searchUser) => (
-                  <UserCard
-                    key={searchUser.id}
-                    user={searchUser}
-                    showActions={true}
-                    actionType="add"
-                    onAction={() => handleSendFriendRequest(searchUser.id)}
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                Входящие запросы ({incomingRequests.length})
+              </h2>
+              
+              {incomingRequests.length === 0 ? (
+                <div className="text-center py-6">
+                  <Mail className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600">Нет входящих запросов</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {incomingRequests.map((request) => (
+                    <UserCard
+                      key={request.id}
+                      user={request.sender!}
+                      showActions={true}
+                      actionType="accept"
+                      requestId={request.id}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Outgoing Requests */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                Исходящие запросы ({outgoingRequests.length})
+              </h2>
+              
+              {outgoingRequests.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-gray-600">Нет исходящих запросов</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {outgoingRequests.map((request) => (
+                    <UserCard
+                      key={request.id}
+                      user={request.receiver!}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'search' && (
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              Поиск пользователей
+            </h2>
+            
+            {/* Search Form */}
+            <div className="mb-6">
+              <div className="flex space-x-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
+                    placeholder="Поиск по имени или username..."
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
-                ))}
+                </div>
+                <button
+                  onClick={searchUsers}
+                  disabled={loading || !searchQuery.trim()}
+                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Поиск...' : 'Найти'}
+                </button>
               </div>
             </div>
-          )}
 
-          {searchQuery && searchResults.length === 0 && !loading && (
-            <div className="text-center py-8">
-              <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">Пользователи не найдены</p>
-              <p className="text-sm text-gray-500">Попробуйте изменить запрос</p>
-            </div>
-          )}
-        </div>
-      )}
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Результаты поиска ({searchResults.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {searchResults.map((searchUser) => (
+                    <UserCard
+                      key={searchUser.id}
+                      user={searchUser}
+                      showActions={true}
+                      actionType="add"
+                      onAction={() => handleSendFriendRequest(searchUser.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {searchQuery && searchResults.length === 0 && !loading && (
+              <div className="text-center py-8">
+                <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">Пользователи не найдены</p>
+                <p className="text-sm text-gray-500">Попробуйте изменить запрос</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
