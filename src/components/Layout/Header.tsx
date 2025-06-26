@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Heart, User, LogOut, Plus, Users, Sparkles } from 'lucide-react';
+import { Gift, Heart, User, LogOut, Plus, Users, Sparkles, UserCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
@@ -10,6 +10,12 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [showUpgradePrompt, setShowUpgradePrompt] = React.useState(false);
+
+  const handleUpgradeAccount = () => {
+    // Перенаправляем на страницу регистрации для гостей
+    navigate('/auth?mode=register');
+  };
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-100">
@@ -57,6 +63,51 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
 
           {/* User Actions */}
           <div className="flex items-center space-x-4">
+            {/* Guest Upgrade Prompt */}
+            {user?.is_guest && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowUpgradePrompt(!showUpgradePrompt)}
+                  className="bg-gradient-to-r from-purple-600 to-teal-500 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 hover:from-purple-700 hover:to-teal-600 transition-all"
+                >
+                  <UserCheck className="h-3 w-3" />
+                  <span>Создать аккаунт</span>
+                </button>
+                
+                {showUpgradePrompt && (
+                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 p-4 z-50">
+                    <div className="text-sm">
+                      <h4 className="font-semibold text-gray-900 mb-2">
+                        Создайте полноценный аккаунт
+                      </h4>
+                      <p className="text-gray-600 mb-3">
+                        Сохраните свои данные навсегда и получите доступ ко всем функциям
+                      </p>
+                      <div className="space-y-2 text-xs text-gray-500 mb-3">
+                        <p>✓ Синхронизация между устройствами</p>
+                        <p>✓ Расширенные настройки приватности</p>
+                        <p>✓ Полный доступ к социальным функциям</p>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setShowUpgradePrompt(false)}
+                          className="flex-1 px-3 py-1 text-gray-600 border border-gray-300 rounded text-xs hover:bg-gray-50"
+                        >
+                          Позже
+                        </button>
+                        <button
+                          onClick={handleUpgradeAccount}
+                          className="flex-1 px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"
+                        >
+                          Создать
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={onCreateWishlist}
               className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
@@ -82,9 +133,14 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
                       <User className="h-4 w-4 text-purple-600" />
                     </div>
                   )}
-                  <span className="hidden sm:inline text-sm font-medium text-gray-700">
-                    {user.name}
-                  </span>
+                  <div className="hidden sm:block">
+                    <span className="text-sm font-medium text-gray-700">
+                      {user.name}
+                    </span>
+                    {user.is_guest && (
+                      <span className="block text-xs text-orange-600">Гость</span>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={signOut}

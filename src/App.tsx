@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { EnhancedLoginScreen } from './components/Auth/EnhancedLoginScreen';
 import { AuthCallback } from './components/Auth/AuthCallback';
@@ -8,6 +8,30 @@ import { WishlistDetailScreen } from './components/WishList/WishlistDetailScreen
 import { ProfileScreen } from './components/Profile/ProfileScreen';
 import { FriendsManager } from './components/Friends/FriendsManager';
 import { ProductRecommendations } from './components/Products/ProductRecommendations';
+
+const AuthRoute: React.FC = () => {
+  const { user, loading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const mode = searchParams.get('mode');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Если пользователь уже авторизован и не гость, или гость не хочет регистрироваться
+  if (user && (!user.is_guest || mode !== 'register')) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <EnhancedLoginScreen />;
+};
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -38,7 +62,7 @@ const AppContent: React.FC = () => {
     <Routes>
       <Route 
         path="/auth" 
-        element={user ? <Navigate to="/" replace /> : <EnhancedLoginScreen />} 
+        element={<AuthRoute />} 
       />
       <Route 
         path="/auth/callback" 
