@@ -25,37 +25,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Получаем текущую сессию
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata.full_name || session.user.email || '',
-          avatar_url: session.user.user_metadata.avatar_url,
-          created_at: session.user.created_at
-        });
+        loadUserProfile(session.user);
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     // Слушаем изменения авторизации
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata.full_name || session.user.email || '',
-            avatar_url: session.user.user_metadata.avatar_url,
-            created_at: session.user.created_at
-          });
+          await loadUserProfile(session.user);
         } else {
           setUser(null);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const loadUserProfile = async (authUser: any) => {
+    try {
+      // Пытаемся загрузить профиль из таблицы profiles
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      // Если профиль не найден, создаем его
+      if (!profile) {
+        const newProfile = {
+          id: authUser.id,
+          email: authUser.email,
+          name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
+          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || `user_${authUser.id.substring(0, 8)}`,
+          avatar_url: authUser.user_metadata?.avatar_url,
+          privacy_settings: 'public',
+          is_guest: authUser.is_anonymous || false
+        };
+
+        const { data: createdProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert(newProfile)
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          // Fallback к данным из auth
+          setUser({
+            id: authUser.id,
+            email: authUser.email || '',
+            name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
+            avatar_url: authUser.user_metadata?.avatar_url,
+            created_at: authUser.created_at,
+            is_guest: authUser.is_anonymous || false
+          });
+        } else {
+          setUser(createdProfile);
+        }
+      } else {
+        setUser(profile);
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      // Fallback к данным из auth
+      setUser({
+        id: authUser.id,
+        email: authUser.email || '',
+        name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
+        avatar_url: authUser.user_metadata?.avatar_url,
+        created_at: authUser.created_at,
+        is_guest: authUser.is_anonymous || false
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({

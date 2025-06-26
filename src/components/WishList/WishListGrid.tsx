@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { WishListCard } from './WishListCard';
 import type { WishList } from '../../types';
@@ -6,7 +7,7 @@ import type { WishList } from '../../types';
 interface WishListGridProps {
   wishlists: WishList[];
   onCreateNew: () => void;
-  onWishListClick: (wishlist: WishList) => void;
+  onWishListClick?: (wishlist: WishList) => void;
 }
 
 export const WishListGrid: React.FC<WishListGridProps> = ({
@@ -14,6 +15,16 @@ export const WishListGrid: React.FC<WishListGridProps> = ({
   onCreateNew,
   onWishListClick
 }) => {
+  const navigate = useNavigate();
+
+  const handleWishListClick = (wishlist: WishList) => {
+    if (onWishListClick) {
+      onWishListClick(wishlist);
+    } else {
+      navigate(`/wishlist/${wishlist.id}`);
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {/* Create New Card */}
@@ -37,7 +48,7 @@ export const WishListGrid: React.FC<WishListGridProps> = ({
         <WishListCard
           key={wishlist.id}
           wishlist={wishlist}
-          onClick={() => onWishListClick(wishlist)}
+          onClick={() => handleWishListClick(wishlist)}
         />
       ))}
     </div>

@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { EnhancedLoginScreen } from './components/Auth/EnhancedLoginScreen';
 import { AuthCallback } from './components/Auth/AuthCallback';
 import { EnhancedDashboard } from './components/Dashboard/EnhancedDashboard';
+import { WishlistDetailScreen } from './components/WishList/WishlistDetailScreen';
+import { ProfileScreen } from './components/Profile/ProfileScreen';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -32,6 +34,14 @@ const AppContent: React.FC = () => {
       <Route 
         path="/" 
         element={user ? <EnhancedDashboard /> : <Navigate to="/auth" replace />} 
+      />
+      <Route 
+        path="/wishlist/:id" 
+        element={user ? <WishlistDetailScreen /> : <Navigate to="/auth" replace />} 
+      />
+      <Route 
+        path="/profile" 
+        element={user ? <ProfileScreen /> : <Navigate to="/auth" replace />} 
       />
       <Route 
         path="*" 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Gift, Heart, User, LogOut, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -8,13 +9,17 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <div className="flex items-center space-x-3">
+          <div 
+            className="flex items-center space-x-3 cursor-pointer"
+            onClick={() => navigate('/')}
+          >
             <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-teal-500 rounded-xl flex items-center justify-center">
               <Gift className="h-6 w-6 text-white" />
             </div>
@@ -28,9 +33,12 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <a href="#" className="text-gray-700 hover:text-purple-600 transition-colors font-medium">
+            <button 
+              onClick={() => navigate('/')}
+              className="text-gray-700 hover:text-purple-600 transition-colors font-medium"
+            >
               Мои списки
-            </a>
+            </button>
             <a href="#" className="text-gray-700 hover:text-purple-600 transition-colors font-medium">
               Популярное
             </a>
@@ -51,7 +59,10 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
 
             {user && (
               <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-2">
+                <div 
+                  className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors"
+                  onClick={() => navigate('/profile')}
+                >
                   {user.avatar_url ? (
                     <img
                       src={user.avatar_url}

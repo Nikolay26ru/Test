@@ -15,6 +15,7 @@ export const EnhancedDashboard: React.FC = () => {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'lists' | 'ai' | 'crowdfunding'>('lists');
+  const [toastMessage, setToastMessage] = useState<string>('');
 
   // Загрузка данных
   useEffect(() => {
@@ -23,6 +24,20 @@ export const EnhancedDashboard: React.FC = () => {
       loadCampaigns();
     }
   }, [user]);
+
+  // Toast notification effect
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => {
+        setToastMessage('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+  };
 
   const loadWishlists = async () => {
     if (!user) return;
@@ -84,9 +99,10 @@ export const EnhancedDashboard: React.FC = () => {
 
     if (error) {
       console.error('Error creating wishlist:', error);
-      alert('Не удалось создать список. Попробуйте еще раз.');
+      showToast('Не удалось создать список. Попробуйте еще раз.');
     } else {
       loadWishlists();
+      showToast('Список желаний успешно создан!');
     }
   };
 
@@ -95,9 +111,12 @@ export const EnhancedDashboard: React.FC = () => {
     const match = recommendation.match(/\*\*(.*?)\*\*/);
     const itemTitle = match ? match[1] : recommendation.split(' ').slice(0, 3).join(' ');
     
-    // Здесь можно открыть модал добавления товара с предзаполненным названием
-    console.log('Add item from AI recommendation:', itemTitle);
-    alert(`Добавить "${itemTitle}" в список желаний? (функция в разработке)`);
+    // Копируем в буфер обмена
+    navigator.clipboard.writeText(itemTitle).then(() => {
+      showToast(`"${itemTitle}" скопировано в буфер обмена! Теперь вы можете добавить это в любой список желаний.`);
+    }).catch(() => {
+      showToast(`Рекомендация: "${itemTitle}". Добавьте это в свой список желаний!`);
+    });
   };
 
   const stats = [
@@ -136,6 +155,13 @@ export const EnhancedDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header onCreateWishlist={() => setIsCreateModalOpen(true)} />
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 max-w-md">
+          <p className="text-sm">{toastMessage}</p>
+        </div>
+      )}
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
@@ -208,7 +234,6 @@ export const EnhancedDashboard: React.FC = () => {
             <WishListGrid
               wishlists={wishlists}
               onCreateNew={() => setIsCreateModalOpen(true)}
-              onWishListClick={(wishlist) => console.log('Open wishlist:', wishlist)}
             />
           </div>
         )}
