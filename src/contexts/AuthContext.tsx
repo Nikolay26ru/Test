@@ -67,25 +67,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthProvider: Loading profile for user:', authUser.id);
     
     try {
-      // Сначала пытаемся создать профиль если его нет
-      await ensureProfileExists(authUser);
-      
-      // Затем загружаем профиль
-      const { data: profile, error } = await supabase
+      // Сначала пытаемся загрузить существующий профиль
+      console.log('🔍 AuthProvider: Checking for existing profile...');
+      const { data: existingProfile, error: selectError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
-      if (error) {
-        console.error('❌ AuthProvider: Error loading profile:', error);
-        // Fallback к данным из auth
+      if (existingProfile) {
+        console.log('✅ AuthProvider: Found existing profile:', existingProfile.name);
+        setUser(existingProfile);
+        setLoading(false);
+        return;
+      }
+
+      // Если профиль не найден, создаем новый
+      if (selectError?.code === 'PGRST116') {
+        console.log('🔧 AuthProvider: Profile not found, creating new one...');
+        
+        const newProfileData = {
+          id: authUser.id,
+          email: authUser.email || '',
+          name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
+          username: authUser.user_metadata?.username || 
+                   authUser.email?.split('@')[0] || 
+                   `user_${authUser.id.substring(0, 8)}`,
+          avatar_url: authUser.user_metadata?.avatar_url || null,
+          privacy_settings: 'public',
+          is_guest: authUser.is_anonymous || false
+        };
+
+        console.log('🔧 AuthProvider: Creating profile with data:', newProfileData);
+
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert(newProfileData)
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('❌ AuthProvider: Error creating profile:', insertError);
+          // Используем fallback данные
+          const fallbackUser = createFallbackUser(authUser);
+          setUser(fallbackUser);
+          console.log('⚠️ AuthProvider: Using fallback user data');
+        } else {
+          console.log('✅ AuthProvider: Profile created successfully:', newProfile.name);
+          setUser(newProfile);
+        }
+      } else {
+        console.error('❌ AuthProvider: Unexpected error loading profile:', selectError);
+        // Используем fallback данные
         const fallbackUser = createFallbackUser(authUser);
         setUser(fallbackUser);
-        console.log('⚠️ AuthProvider: Using fallback user data');
-      } else {
-        console.log('✅ AuthProvider: Profile loaded successfully:', profile.name);
-        setUser(profile);
+        console.log('⚠️ AuthProvider: Using fallback user data due to error');
       }
     } catch (error) {
       console.error('❌ AuthProvider: Critical error in loadUserProfile:', error);
@@ -98,40 +134,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const ensureProfileExists = async (authUser: any) => {
-    console.log('🔧 AuthProvider: Ensuring profile exists for:', authUser.id);
-    
-    try {
-      const profileData = {
-        id: authUser.id,
-        email: authUser.email,
-        name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
-        username: authUser.user_metadata?.username || 
-                 authUser.email?.split('@')[0] || 
-                 `user_${authUser.id.substring(0, 8)}`,
-        avatar_url: authUser.user_metadata?.avatar_url,
-        privacy_settings: 'public',
-        is_guest: authUser.is_anonymous || false
-      };
-
-      const { error } = await supabase
-        .from('profiles')
-        .upsert(profileData, { 
-          onConflict: 'id',
-          ignoreDuplicates: false 
-        });
-
-      if (error) {
-        console.error('❌ AuthProvider: Error upserting profile:', error);
-      } else {
-        console.log('✅ AuthProvider: Profile ensured for:', profileData.name);
-      }
-    } catch (error) {
-      console.error('❌ AuthProvider: Error in ensureProfileExists:', error);
-    }
-  };
-
   const createFallbackUser = (authUser: any): User => {
+    console.log('🔧 AuthProvider: Creating fallback user');
     return {
       id: authUser.id,
       email: authUser.email || '',
@@ -142,7 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                `user_${authUser.id.substring(0, 8)}`,
       privacy_settings: 'public',
       is_guest: authUser.is_anonymous || false,
-      created_at: authUser.created_at
+      created_at: authUser.created_at || new Date().toISOString()
     };
   };
 
