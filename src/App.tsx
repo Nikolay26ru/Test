@@ -19,8 +19,14 @@ const AppContent: React.FC = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Загрузка...</p>
           <p className="text-xs text-gray-400 mt-2">
-            Проверьте консоль разработчика для подробной информации
+            Если загрузка затянулась, обновите страницу
           </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+          >
+            Обновить страницу
+          </button>
         </div>
       </div>
     );

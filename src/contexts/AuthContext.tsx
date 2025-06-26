@@ -66,70 +66,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadUserProfile = async (authUser: any) => {
     console.log('🔍 AuthProvider: Loading profile for user:', authUser.id);
     
+    // Устанавливаем таймаут на весь процесс
+    const timeoutId = setTimeout(() => {
+      console.warn('⏰ AuthProvider: Profile loading timeout, using fallback');
+      const fallbackUser = createFallbackUser(authUser);
+      setUser(fallbackUser);
+      setLoading(false);
+    }, 5000); // 5 секунд таймаут
+
     try {
-      // Сначала пытаемся загрузить существующий профиль
-      console.log('🔍 AuthProvider: Checking for existing profile...');
-      const { data: existingProfile, error: selectError } = await supabase
+      // Сразу создаем fallback пользователя
+      const fallbackUser = createFallbackUser(authUser);
+      
+      console.log('🔍 AuthProvider: Attempting to load profile from database...');
+      
+      // Пытаемся загрузить профиль с коротким таймаутом
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
-      if (existingProfile) {
-        console.log('✅ AuthProvider: Found existing profile:', existingProfile.name);
-        setUser(existingProfile);
-        setLoading(false);
-        return;
-      }
+      // Ждем максимум 3 секунды
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Database timeout')), 3000);
+      });
 
-      // Если профиль не найден, создаем новый
-      if (selectError?.code === 'PGRST116') {
-        console.log('🔧 AuthProvider: Profile not found, creating new one...');
+      try {
+        const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
         
-        const newProfileData = {
-          id: authUser.id,
-          email: authUser.email || '',
-          name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
-          username: authUser.user_metadata?.username || 
-                   authUser.email?.split('@')[0] || 
-                   `user_${authUser.id.substring(0, 8)}`,
-          avatar_url: authUser.user_metadata?.avatar_url || null,
-          privacy_settings: 'public',
-          is_guest: authUser.is_anonymous || false
-        };
-
-        console.log('🔧 AuthProvider: Creating profile with data:', newProfileData);
-
-        const { data: newProfile, error: insertError } = await supabase
-          .from('profiles')
-          .insert(newProfileData)
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('❌ AuthProvider: Error creating profile:', insertError);
-          // Используем fallback данные
-          const fallbackUser = createFallbackUser(authUser);
-          setUser(fallbackUser);
-          console.log('⚠️ AuthProvider: Using fallback user data');
-        } else {
-          console.log('✅ AuthProvider: Profile created successfully:', newProfile.name);
-          setUser(newProfile);
+        if (profile && !error) {
+          console.log('✅ AuthProvider: Profile loaded from database:', profile.name);
+          clearTimeout(timeoutId);
+          setUser(profile);
+          setLoading(false);
+          return;
         }
-      } else {
-        console.error('❌ AuthProvider: Unexpected error loading profile:', selectError);
-        // Используем fallback данные
-        const fallbackUser = createFallbackUser(authUser);
-        setUser(fallbackUser);
-        console.log('⚠️ AuthProvider: Using fallback user data due to error');
+
+        if (error?.code === 'PGRST116') {
+          console.log('🔧 AuthProvider: Profile not found, creating...');
+          // Пытаемся создать профиль, но не ждем долго
+          const createPromise = supabase
+            .from('profiles')
+            .insert(fallbackUser)
+            .select()
+            .single();
+
+          const createTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Create timeout')), 2000);
+          });
+
+          try {
+            const { data: newProfile } = await Promise.race([createPromise, createTimeoutPromise]) as any;
+            if (newProfile) {
+              console.log('✅ AuthProvider: Profile created successfully');
+              clearTimeout(timeoutId);
+              setUser(newProfile);
+              setLoading(false);
+              return;
+            }
+          } catch (createError) {
+            console.warn('⚠️ AuthProvider: Failed to create profile, using fallback');
+          }
+        }
+      } catch (dbError) {
+        console.warn('⚠️ AuthProvider: Database operation failed:', dbError);
       }
+
+      // Если дошли сюда - используем fallback
+      console.log('🔧 AuthProvider: Using fallback user data');
+      clearTimeout(timeoutId);
+      setUser(fallbackUser);
+      setLoading(false);
+
     } catch (error) {
       console.error('❌ AuthProvider: Critical error in loadUserProfile:', error);
-      // Последний fallback
+      clearTimeout(timeoutId);
       const fallbackUser = createFallbackUser(authUser);
       setUser(fallbackUser);
-      console.log('⚠️ AuthProvider: Using emergency fallback');
-    } finally {
       setLoading(false);
     }
   };
