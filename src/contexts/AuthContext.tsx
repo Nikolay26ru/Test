@@ -24,7 +24,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     console.log('🔄 AuthProvider: Initializing auth state...');
     
-    // Получаем текущую сессию
+    // Проверяем гостевую сессию в localStorage
+    const checkGuestSession = () => {
+      const guestSession = localStorage.getItem('guest_session');
+      if (guestSession) {
+        try {
+          const session = JSON.parse(guestSession);
+          const expiresAt = new Date(session.expires_at);
+          
+          if (expiresAt > new Date()) {
+            console.log('✅ AuthProvider: Found valid guest session');
+            setUser(session.user);
+            setLoading(false);
+            return true;
+          } else {
+            console.log('⏰ AuthProvider: Guest session expired, cleaning up');
+            localStorage.removeItem('guest_session');
+            localStorage.removeItem('guest_user');
+          }
+        } catch (error) {
+          console.error('❌ AuthProvider: Error parsing guest session:', error);
+          localStorage.removeItem('guest_session');
+          localStorage.removeItem('guest_user');
+        }
+      }
+      return false;
+    };
+
+    // Сначала проверяем гостевую сессию
+    if (checkGuestSession()) {
+      return;
+    }
+    
+    // Затем проверяем Supabase сессию
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         console.error('❌ AuthProvider: Error getting session:', error);
@@ -33,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (session?.user) {
-        console.log('✅ AuthProvider: Found existing session for user:', session.user.id);
+        console.log('✅ AuthProvider: Found existing Supabase session for user:', session.user.id);
         loadUserProfile(session.user);
       } else {
         console.log('ℹ️ AuthProvider: No existing session found');
@@ -41,15 +73,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Слушаем изменения авторизации
+    // Слушаем изменения авторизации Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔄 AuthProvider: Auth state changed:', event);
         
+        // Очищаем гостевую сессию при входе через Supabase
         if (session?.user) {
-          console.log('✅ AuthProvider: User signed in:', session.user.id);
+          localStorage.removeItem('guest_session');
+          localStorage.removeItem('guest_user');
+          console.log('✅ AuthProvider: User signed in via Supabase:', session.user.id);
           await loadUserProfile(session.user);
-        } else {
+        } else if (event === 'SIGNED_OUT') {
           console.log('ℹ️ AuthProvider: User signed out');
           setUser(null);
           setLoading(false);
@@ -167,6 +202,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle = async () => {
     console.log('🔄 AuthProvider: Starting Google sign in...');
     
+    // Очищаем гостевую сессию
+    localStorage.removeItem('guest_session');
+    localStorage.removeItem('guest_user');
+    
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -191,6 +230,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔄 AuthProvider: Signing out...');
     
     try {
+      // Очищаем гостевую сессию
+      localStorage.removeItem('guest_session');
+      localStorage.removeItem('guest_user');
+      
+      // Выходим из Supabase если есть сессия
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('❌ AuthProvider: Sign out error:', error);
@@ -213,7 +257,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   console.log('🔄 AuthProvider: Rendering with state:', { 
     hasUser: !!user, 
     loading, 
-    userName: user?.name 
+    userName: user?.name,
+    isGuest: user?.is_guest 
   });
 
   return (

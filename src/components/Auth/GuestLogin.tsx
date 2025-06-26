@@ -13,29 +13,50 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
   const signInAsGuest = async () => {
     setLoading(true);
     try {
-      // Создаем анонимного пользователя
-      const { data, error } = await supabase.auth.signInAnonymously();
+      console.log('🔄 Starting guest login...');
       
-      if (error) throw error;
+      // Создаем временного пользователя без Supabase Auth
+      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const username = guestName.trim() || `Гость_${Math.random().toString(36).substring(7)}`;
+      
+      const guestUser = {
+        id: guestId,
+        email: `${guestId}@guest.local`,
+        name: username,
+        username: username.toLowerCase().replace(/\s+/g, '_'),
+        is_guest: true,
+        privacy_settings: 'public',
+        created_at: new Date().toISOString()
+      };
 
-      if (data.user) {
-        // Создаем профиль гостя
-        const username = guestName.trim() || `Гость_${Math.random().toString(36).substring(7)}`;
-        
+      // Сохраняем данные гостя в localStorage
+      localStorage.setItem('guest_user', JSON.stringify(guestUser));
+      localStorage.setItem('guest_session', JSON.stringify({
+        user: guestUser,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 часа
+      }));
+
+      console.log('✅ Guest user created:', guestUser);
+      
+      // Пытаемся создать профиль в базе данных (необязательно)
+      try {
         await supabase
           .from('profiles')
-          .upsert({
-            id: data.user.id,
+          .insert({
+            id: guestId,
             name: username,
-            username: username.toLowerCase().replace(/\s+/g, '_'),
+            username: guestUser.username,
             is_guest: true,
             privacy_settings: 'public'
           });
-
-        onSuccess();
+        console.log('✅ Guest profile created in database');
+      } catch (dbError) {
+        console.warn('⚠️ Could not create guest profile in database, continuing with local storage');
       }
+
+      onSuccess();
     } catch (error) {
-      console.error('Guest login error:', error);
+      console.error('❌ Guest login error:', error);
       alert('Не удалось войти как гость. Попробуйте еще раз.');
     } finally {
       setLoading(false);
