@@ -22,11 +22,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔄 AuthProvider: Initializing auth state...');
+    
     // Получаем текущую сессию
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      console.log('🔍 AuthProvider: Initial session check', { session: !!session, error });
+      
+      if (error) {
+        console.error('❌ AuthProvider: Session error:', error);
+        setLoading(false);
+        return;
+      }
+
       if (session?.user) {
+        console.log('✅ AuthProvider: Found existing session, loading profile...');
         loadUserProfile(session.user);
       } else {
+        console.log('ℹ️ AuthProvider: No existing session found');
         setLoading(false);
       }
     });
@@ -34,33 +46,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Слушаем изменения авторизации
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('🔄 AuthProvider: Auth state changed', { event, session: !!session });
+        
         if (session?.user) {
+          console.log('✅ AuthProvider: User signed in, loading profile...');
           await loadUserProfile(session.user);
         } else {
+          console.log('❌ AuthProvider: User signed out');
           setUser(null);
           setLoading(false);
         }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      console.log('🧹 AuthProvider: Cleaning up subscription');
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadUserProfile = async (authUser: any) => {
+    console.log('🔄 AuthProvider: Loading profile for user:', authUser.id);
+    
     try {
+      setLoading(true);
+      
       // Пытаемся загрузить профиль из таблицы profiles
+      console.log('🔍 AuthProvider: Querying profiles table...');
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
+      console.log('📊 AuthProvider: Profile query result', { profile: !!profile, error });
+
       if (error && error.code !== 'PGRST116') {
+        console.error('❌ AuthProvider: Profile query error:', error);
         throw error;
       }
 
       // Если профиль не найден, создаем его
       if (!profile) {
+        console.log('➕ AuthProvider: Profile not found, creating new one...');
+        
         const newProfile = {
           id: authUser.id,
           email: authUser.email,
@@ -71,6 +100,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           is_guest: authUser.is_anonymous || false
         };
 
+        console.log('📝 AuthProvider: Creating profile with data:', newProfile);
+
         const { data: createdProfile, error: createError } = await supabase
           .from('profiles')
           .insert(newProfile)
@@ -78,8 +109,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (createError) {
-          console.error('Error creating profile:', createError);
+          console.error('❌ AuthProvider: Profile creation error:', createError);
           // Fallback к данным из auth
+          console.log('🔄 AuthProvider: Using fallback auth data');
           setUser({
             id: authUser.id,
             email: authUser.email || '',
@@ -89,14 +121,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             is_guest: authUser.is_anonymous || false
           });
         } else {
+          console.log('✅ AuthProvider: Profile created successfully');
           setUser(createdProfile);
         }
       } else {
+        console.log('✅ AuthProvider: Profile loaded successfully');
         setUser(profile);
       }
     } catch (error) {
-      console.error('Error loading user profile:', error);
+      console.error('❌ AuthProvider: Error in loadUserProfile:', error);
+      
       // Fallback к данным из auth
+      console.log('🔄 AuthProvider: Using fallback auth data due to error');
       setUser({
         id: authUser.id,
         email: authUser.email || '',
@@ -106,23 +142,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         is_guest: authUser.is_anonymous || false
       });
     } finally {
+      console.log('🏁 AuthProvider: Profile loading completed');
       setLoading(false);
     }
   };
 
   const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+    console.log('🔄 AuthProvider: Starting Google sign in...');
+    
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      
+      if (error) {
+        console.error('❌ AuthProvider: Google sign in error:', error);
+        throw error;
       }
-    });
-    if (error) throw error;
+      
+      console.log('✅ AuthProvider: Google sign in initiated');
+    } catch (error) {
+      console.error('❌ AuthProvider: Google sign in failed:', error);
+      throw error;
+    }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    console.log('🔄 AuthProvider: Signing out...');
+    
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('❌ AuthProvider: Sign out error:', error);
+        throw error;
+      }
+      
+      console.log('✅ AuthProvider: Signed out successfully');
+    } catch (error) {
+      console.error('❌ AuthProvider: Sign out failed:', error);
+      throw error;
+    }
   };
 
   const value = {
@@ -131,6 +193,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signInWithGoogle,
     signOut
   };
+
+  console.log('🎯 AuthProvider: Current state', { 
+    hasUser: !!user, 
+    loading, 
+    userId: user?.id 
+  });
 
   return (
     <AuthContext.Provider value={value}>

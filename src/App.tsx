@@ -10,12 +10,17 @@ import { ProfileScreen } from './components/Profile/ProfileScreen';
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
 
+  console.log('🎯 App: Current state', { hasUser: !!user, loading });
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Загрузка...</p>
+          <p className="text-xs text-gray-400 mt-2">
+            Проверьте консоль разработчика для подробной информации
+          </p>
         </div>
       </div>
     );
@@ -52,6 +57,8 @@ const AppContent: React.FC = () => {
 };
 
 function App() {
+  console.log('🚀 App: Starting application...');
+  
   return (
     <Router>
       <AuthProvider>
