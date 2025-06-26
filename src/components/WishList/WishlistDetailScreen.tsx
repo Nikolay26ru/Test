@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit3, Trash2, Check, X, ShoppingCart, Star, Heart } from 'lucide-react';
+import { ArrowLeft, Plus, Edit3, Trash2, Check, X, ShoppingCart, Star, Heart, Users, UserPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import type { WishList, WishItem } from '../../types';
+import { FriendsService } from '../../lib/friendsService';
+import { ProductRecommendationService } from '../../lib/productRecommendationService';
+import type { WishList, WishItem, FriendshipStatus } from '../../types';
 
 export const WishlistDetailScreen: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +16,8 @@ export const WishlistDetailScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>('none');
+  const [friendsCount, setFriendsCount] = useState(0);
 
   const [newItem, setNewItem] = useState({
     title: '',
@@ -30,6 +34,12 @@ export const WishlistDetailScreen: React.FC = () => {
     }
   }, [id]);
 
+  useEffect(() => {
+    if (wishlist && user && wishlist.user_id !== user.id) {
+      loadFriendshipData();
+    }
+  }, [wishlist, user]);
+
   const loadWishlistData = async () => {
     if (!id) return;
 
@@ -41,8 +51,11 @@ export const WishlistDetailScreen: React.FC = () => {
         .select(`
           *,
           profiles (
+            id,
             name,
-            avatar_url
+            username,
+            avatar_url,
+            bio
           )
         `)
         .eq('id', id)
@@ -68,11 +81,47 @@ export const WishlistDetailScreen: React.FC = () => {
       if (itemsError) throw itemsError;
 
       setItems(itemsData || []);
+
+      // Записываем просмотры товаров для рекомендаций (только если это не наш список)
+      if (user && wishlistData.user_id !== user.id && itemsData) {
+        for (const item of itemsData.slice(0, 3)) { // Записываем только первые 3 товара
+          await ProductRecommendationService.recordProductView(user.id, item.id);
+        }
+      }
     } catch (error) {
       console.error('Error loading wishlist:', error);
       navigate('/');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFriendshipData = async () => {
+    if (!user || !wishlist) return;
+
+    try {
+      const [status, count] = await Promise.all([
+        FriendsService.getFriendshipStatus(user.id, wishlist.user_id),
+        FriendsService.getFriendsCount(wishlist.user_id)
+      ]);
+
+      setFriendshipStatus(status);
+      setFriendsCount(count);
+    } catch (error) {
+      console.error('Error loading friendship data:', error);
+    }
+  };
+
+  const handleSendFriendRequest = async () => {
+    if (!user || !wishlist) return;
+
+    const result = await FriendsService.sendFriendRequest(user.id, wishlist.user_id);
+    
+    if (result.success) {
+      setFriendshipStatus('pending_sent');
+      alert(result.message);
+    } else {
+      alert(result.message);
     }
   };
 
@@ -149,6 +198,18 @@ export const WishlistDetailScreen: React.FC = () => {
     }
   };
 
+  const handleItemClick = async (item: WishItem) => {
+    // Записываем просмотр товара для рекомендаций
+    if (user && wishlist && wishlist.user_id !== user.id) {
+      await ProductRecommendationService.recordProductView(user.id, item.id);
+    }
+
+    // Открываем ссылку на товар если есть
+    if (item.store_url) {
+      window.open(item.store_url, '_blank');
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high': return 'text-red-600 bg-red-100';
@@ -164,6 +225,15 @@ export const WishlistDetailScreen: React.FC = () => {
       case 'medium': return 'Средний';
       case 'low': return 'Низкий';
       default: return 'Средний';
+    }
+  };
+
+  const getFriendshipStatusText = (status: FriendshipStatus) => {
+    switch (status) {
+      case 'friends': return 'В друзьях';
+      case 'pending_sent': return 'Запрос отправлен';
+      case 'pending_received': return 'Входящий запрос';
+      default: return 'Добавить в друзья';
     }
   };
 
@@ -214,22 +284,52 @@ export const WishlistDetailScreen: React.FC = () => {
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">{wishlist.title}</h1>
               <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                <span>Автор: {wishlist.profiles?.name || 'Неизвестно'}</span>
+                <div className="flex items-center space-x-2">
+                  <span>Автор: {wishlist.profiles?.name || 'Неизвестно'}</span>
+                  {!isOwner && (
+                    <div className="flex items-center space-x-2">
+                      <span>•</span>
+                      <Users className="h-4 w-4" />
+                      <span>{friendsCount} друзей</span>
+                    </div>
+                  )}
+                </div>
                 <span>•</span>
                 <span>{items.length} товаров</span>
                 <span>•</span>
                 <span>{completedItems} выполнено</span>
               </div>
             </div>
-            {isOwner && (
-              <button
-                onClick={() => setShowAddForm(true)}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center space-x-2"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Добавить товар</span>
-              </button>
-            )}
+            
+            <div className="flex items-center space-x-3">
+              {/* Friend Request Button */}
+              {!isOwner && user && (
+                <button
+                  onClick={handleSendFriendRequest}
+                  disabled={friendshipStatus !== 'none'}
+                  className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors ${
+                    friendshipStatus === 'friends' 
+                      ? 'bg-green-100 text-green-700'
+                      : friendshipStatus === 'pending_sent'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  } disabled:opacity-50`}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>{getFriendshipStatusText(friendshipStatus)}</span>
+                </button>
+              )}
+
+              {isOwner && (
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center space-x-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Добавить товар</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -380,9 +480,10 @@ export const WishlistDetailScreen: React.FC = () => {
             items.map((item) => (
               <div
                 key={item.id}
-                className={`bg-white rounded-xl shadow-sm border p-6 transition-all ${
+                className={`bg-white rounded-xl shadow-sm border p-6 transition-all cursor-pointer hover:shadow-md ${
                   item.is_purchased ? 'opacity-75 bg-gray-50' : ''
                 }`}
+                onClick={() => handleItemClick(item)}
               >
                 <div className="flex items-start space-x-4">
                   {/* Image */}
@@ -435,21 +536,19 @@ export const WishlistDetailScreen: React.FC = () => {
                         </div>
 
                         {item.store_url && (
-                          <a
-                            href={item.store_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-600 hover:text-purple-700 text-sm mt-2 inline-block"
-                          >
+                          <p className="text-purple-600 hover:text-purple-700 text-sm mt-2">
                             Посмотреть в магазине →
-                          </a>
+                          </p>
                         )}
                       </div>
 
                       {/* Actions */}
                       <div className="flex items-center space-x-2 ml-4">
                         <button
-                          onClick={() => togglePurchased(item.id, item.is_purchased)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            togglePurchased(item.id, item.is_purchased);
+                          }}
                           className={`p-2 rounded-lg transition-colors ${
                             item.is_purchased
                               ? 'bg-green-100 text-green-600 hover:bg-green-200'
@@ -462,7 +561,10 @@ export const WishlistDetailScreen: React.FC = () => {
 
                         {isOwner && (
                           <button
-                            onClick={() => deleteItem(item.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteItem(item.id);
+                            }}
                             className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
                             title="Удалить товар"
                           >

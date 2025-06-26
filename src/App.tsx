@@ -6,6 +6,8 @@ import { AuthCallback } from './components/Auth/AuthCallback';
 import { EnhancedDashboard } from './components/Dashboard/EnhancedDashboard';
 import { WishlistDetailScreen } from './components/WishList/WishlistDetailScreen';
 import { ProfileScreen } from './components/Profile/ProfileScreen';
+import { FriendsManager } from './components/Friends/FriendsManager';
+import { ProductRecommendations } from './components/Products/ProductRecommendations';
 
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
@@ -53,6 +55,14 @@ const AppContent: React.FC = () => {
       <Route 
         path="/profile" 
         element={user ? <ProfileScreen /> : <Navigate to="/auth" replace />} 
+      />
+      <Route 
+        path="/friends" 
+        element={user ? <FriendsManager /> : <Navigate to="/auth" replace />} 
+      />
+      <Route 
+        path="/recommendations" 
+        element={user ? <ProductRecommendations /> : <Navigate to="/auth" replace />} 
       />
       <Route 
         path="*" 

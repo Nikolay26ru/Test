@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Heart, User, LogOut, Plus } from 'lucide-react';
+import { Gift, Heart, User, LogOut, Plus, Users, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
@@ -39,12 +39,20 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
             >
               Мои списки
             </button>
-            <a href="#" className="text-gray-700 hover:text-purple-600 transition-colors font-medium">
-              Популярное
-            </a>
-            <a href="#" className="text-gray-700 hover:text-purple-600 transition-colors font-medium">
-              Друзья
-            </a>
+            <button 
+              onClick={() => navigate('/friends')}
+              className="text-gray-700 hover:text-purple-600 transition-colors font-medium flex items-center space-x-1"
+            >
+              <Users className="h-4 w-4" />
+              <span>Друзья</span>
+            </button>
+            <button 
+              onClick={() => navigate('/recommendations')}
+              className="text-gray-700 hover:text-purple-600 transition-colors font-medium flex items-center space-x-1"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>Рекомендации</span>
+            </button>
           </nav>
 
           {/* User Actions */}

@@ -83,9 +83,46 @@ export interface UserInterest {
   created_at: string;
 }
 
+export interface Friendship {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  created_at: string;
+  friend?: User;
+}
+
+export interface FriendRequest {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  updated_at: string;
+  sender?: User;
+  receiver?: User;
+}
+
+export interface ProductView {
+  id: string;
+  user_id: string;
+  wishlist_item_id: string;
+  viewed_at: string;
+}
+
+export interface ProductRecommendation {
+  id: string;
+  user_id: string;
+  recommended_items: any[];
+  view_count: number;
+  created_at: string;
+  expires_at: string;
+}
+
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
+
+export type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'friends';
