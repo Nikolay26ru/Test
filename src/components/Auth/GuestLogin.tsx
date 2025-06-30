@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserX, ArrowRight } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 interface GuestLoginProps {
   onSuccess: () => void;
@@ -12,37 +13,44 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
   const signInAsGuest = async () => {
     setLoading(true);
     try {
-      console.log('🔄 Starting guest login...');
+      console.log('🔄 Starting anonymous sign in...');
       
-      // Создаем временного пользователя без Supabase Auth
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-      const username = guestName.trim() || `Гость_${Math.random().toString(36).substring(7)}`;
+      // Используем встроенную анонимную аутентификацию Supabase
+      const { data, error } = await supabase.auth.signInAnonymously();
       
-      const guestUser = {
-        id: guestId,
-        email: `${guestId}@guest.local`,
-        name: username,
-        username: username.toLowerCase().replace(/\s+/g, '_'),
-        is_guest: true,
-        privacy_settings: 'public',
-        created_at: new Date().toISOString()
-      };
-
-      // Сохраняем данные гостя в localStorage
-      localStorage.setItem('guest_user', JSON.stringify(guestUser));
-      localStorage.setItem('guest_session', JSON.stringify({
-        user: guestUser,
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 часа
-      }));
-
-      console.log('✅ Guest user created:', guestUser);
+      if (error) throw error;
       
-      // НЕ пытаемся создать профиль в базе данных для гостя
-      // Гостевые данные хранятся только в localStorage
-      
-      onSuccess();
+      if (data.user) {
+        console.log('✅ Anonymous user created:', data.user.id);
+        
+        // Создаем профиль для анонимного пользователя
+        const username = guestName.trim() || `Гость_${Math.random().toString(36).substring(7)}`;
+        
+        try {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+              id: data.user.id,
+              name: username,
+              username: username.toLowerCase().replace(/\s+/g, '_'),
+              is_guest: true,
+              privacy_settings: 'public',
+              email: null
+            });
+            
+          if (profileError) {
+            console.warn('⚠️ Could not create profile, but continuing:', profileError);
+          } else {
+            console.log('✅ Guest profile created in database');
+          }
+        } catch (profileError) {
+          console.warn('⚠️ Profile creation failed, but user can still continue:', profileError);
+        }
+        
+        onSuccess();
+      }
     } catch (error) {
-      console.error('❌ Guest login error:', error);
+      console.error('❌ Anonymous sign in error:', error);
       alert('Не удалось войти как гость. Попробуйте еще раз.');
     } finally {
       setLoading(false);
@@ -94,10 +102,10 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
         </button>
 
         <div className="text-xs text-gray-500 space-y-1">
-          <p>• Ваши данные будут сохранены в этом браузере</p>
+          <p>• Ваши данные будут сохранены в базе данных</p>
           <p>• Вы сможете создавать списки и получать рекомендации</p>
           <p>• Для полного доступа рекомендуем зарегистрироваться</p>
-          <p>• Данные гостя не синхронизируются между устройствами</p>
+          <p>• Гостевая сессия действует 24 часа</p>
         </div>
       </div>
     </div>

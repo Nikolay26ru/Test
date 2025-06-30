@@ -61,6 +61,8 @@ export const GuestToFullRegistration: React.FC<GuestToFullRegistrationProps> = (
 
     setLoading(true);
     try {
+      const oldUserId = user?.id;
+      
       // Создаем полноценный аккаунт
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
@@ -75,7 +77,7 @@ export const GuestToFullRegistration: React.FC<GuestToFullRegistrationProps> = (
 
       if (authError) throw authError;
 
-      if (authData.user) {
+      if (authData.user && oldUserId) {
         // Обновляем профиль
         const { error: profileError } = await supabase
           .from('profiles')
@@ -88,12 +90,12 @@ export const GuestToFullRegistration: React.FC<GuestToFullRegistrationProps> = (
             privacy_settings: 'public'
           });
 
-        if (profileError) throw profileError;
-
-        // Если у нас есть данные гостя, переносим их
-        if (user?.is_guest) {
-          await transferGuestData(user.id, authData.user.id);
+        if (profileError) {
+          console.warn('Profile update error:', profileError);
         }
+
+        // Переносим данные гостя
+        await transferGuestData(oldUserId, authData.user.id);
 
         onSuccess();
       }
@@ -107,32 +109,69 @@ export const GuestToFullRegistration: React.FC<GuestToFullRegistrationProps> = (
 
   const transferGuestData = async (guestId: string, newUserId: string) => {
     try {
+      console.log('🔄 Transferring guest data from', guestId, 'to', newUserId);
+      
       // Переносим списки желаний
-      await supabase
+      const { error: wishlistsError } = await supabase
         .from('wishlists')
         .update({ user_id: newUserId })
         .eq('user_id', guestId);
 
-      // Переносим другие данные пользователя
-      await supabase
+      if (wishlistsError) {
+        console.warn('Error transferring wishlists:', wishlistsError);
+      }
+
+      // Переносим интересы пользователя
+      const { error: interestsError } = await supabase
         .from('user_interests')
         .update({ user_id: newUserId })
         .eq('user_id', guestId);
 
-      await supabase
+      if (interestsError) {
+        console.warn('Error transferring interests:', interestsError);
+      }
+
+      // Переносим AI рекомендации
+      const { error: aiError } = await supabase
         .from('ai_recommendations')
         .update({ user_id: newUserId })
         .eq('user_id', guestId);
 
-      await supabase
+      if (aiError) {
+        console.warn('Error transferring AI recommendations:', aiError);
+      }
+
+      // Переносим просмотры товаров
+      const { error: viewsError } = await supabase
         .from('product_views')
         .update({ user_id: newUserId })
         .eq('user_id', guestId);
 
-      await supabase
+      if (viewsError) {
+        console.warn('Error transferring product views:', viewsError);
+      }
+
+      // Переносим рекомендации товаров
+      const { error: recommendationsError } = await supabase
         .from('product_recommendations')
         .update({ user_id: newUserId })
         .eq('user_id', guestId);
+
+      if (recommendationsError) {
+        console.warn('Error transferring product recommendations:', recommendationsError);
+      }
+
+      // Удаляем старый профиль гостя
+      const { error: deleteError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', guestId);
+
+      if (deleteError) {
+        console.warn('Error deleting old guest profile:', deleteError);
+      }
+
+      console.log('✅ Guest data transfer completed');
     } catch (error) {
       console.error('Error transferring guest data:', error);
     }

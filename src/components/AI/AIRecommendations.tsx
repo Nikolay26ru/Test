@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Loader2, RefreshCw } from 'lucide-react';
+import { Sparkles, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import { getAIRecommendations, buildUserContext } from '../../lib/gigachat';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -62,8 +62,8 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
           });
       }
     } catch (err) {
-      setError('Не удалось получить рекомендации');
       console.error('AI recommendations error:', err);
+      setError('Не удалось получить рекомендации. Попробуйте позже.');
     } finally {
       setLoading(false);
     }
@@ -122,7 +122,10 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-600 text-sm">{error}</p>
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <p className="text-red-600 text-sm">{error}</p>
+          </div>
         </div>
       )}
 
