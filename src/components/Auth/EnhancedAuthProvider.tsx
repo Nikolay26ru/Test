@@ -5,11 +5,17 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { AuthService } from '../../lib/auth/AuthService';
 import { GuestService } from '../../lib/guest/GuestService';
-import { LoggingService } from '../../lib/logging/LoggingService';
-import { ErrorHandler } from '../../lib/error/ErrorHandler';
-import type { AuthContextType, User, LoginCredentials, RegisterCredentials, AuthResult } from '../../types/auth';
+import type { User } from '../../types';
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  signInWithGoogle: () => Promise<void>;
+  signInAsGuest: (guestName?: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<User>) => Promise<boolean>;
+}
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -36,30 +42,36 @@ export const EnhancedAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        LoggingService.info('Инициализация AuthProvider');
+        console.log('🔄 Инициализация AuthProvider');
 
         // Проверяем текущую сессию Supabase
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          LoggingService.error('Ошибка получения сессии', error);
+          console.error('Ошибка получения сессии:', error);
         } else if (session?.user) {
-          LoggingService.info('Найдена существующая сессия', { userId: session.user.id });
-          const currentUser = await AuthService.getCurrentUser();
+          console.log('✅ Найдена существующая сессия Supabase');
+          const currentUser = await loadUserProfile(session.user);
           setUser(currentUser);
         } else {
           // Проверяем гостевую сессию
           const guestSession = GuestService.getGuestSession();
           if (guestSession) {
-            LoggingService.info('Найдена гостевая сессия', { userId: guestSession.user.id });
-            setUser(guestSession.user);
+            console.log('✅ Найдена гостевая сессия');
+            setUser({
+              id: guestSession.user.id,
+              email: '',
+              name: guestSession.user.name,
+              username: guestSession.user.username,
+              is_guest: true,
+              created_at: guestSession.user.created_at
+            });
           }
         }
 
         setInitialized(true);
       } catch (error) {
-        LoggingService.error('Ошибка инициализации авторизации', error);
-        ErrorHandler.showToast('Ошибка инициализации авторизации', 'error');
+        console.error('Ошибка инициализации авторизации:', error);
       } finally {
         setLoading(false);
       }
@@ -76,19 +88,30 @@ export const EnhancedAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        LoggingService.info('Изменение состояния авторизации', { event, userId: session?.user?.id });
+        console.log('🔄 Изменение состояния авторизации:', event);
 
         try {
           if (session?.user) {
-            const currentUser = await AuthService.getCurrentUser();
+            const currentUser = await loadUserProfile(session.user);
             setUser(currentUser);
           } else if (event === 'SIGNED_OUT') {
             // Проверяем гостевую сессию после выхода
             const guestSession = GuestService.getGuestSession();
-            setUser(guestSession?.user || null);
+            if (guestSession) {
+              setUser({
+                id: guestSession.user.id,
+                email: '',
+                name: guestSession.user.name,
+                username: guestSession.user.username,
+                is_guest: true,
+                created_at: guestSession.user.created_at
+              });
+            } else {
+              setUser(null);
+            }
           }
         } catch (error) {
-          LoggingService.error('Ошибка обработки изменения авторизации', error);
+          console.error('Ошибка обработки изменения авторизации:', error);
         }
       }
     );
@@ -99,137 +122,146 @@ export const EnhancedAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
   }, [initialized]);
 
   /**
-   * Вход с email и паролем
+   * Загрузка профиля пользователя
    */
-  const signInWithEmail = useCallback(async (credentials: LoginCredentials): Promise<AuthResult> => {
-    setLoading(true);
+  const loadUserProfile = async (authUser: any): Promise<User> => {
     try {
-      const result = await AuthService.signInWithEmail(credentials);
+      console.log('🔄 Загрузка профиля пользователя');
       
-      if (result.success && result.user) {
-        setUser(result.user);
-        LoggingService.userAction('email_login', result.user.id);
-      }
-      
-      return result;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
 
-  /**
-   * Регистрация с email и паролем
-   */
-  const signUpWithEmail = useCallback(async (credentials: RegisterCredentials): Promise<AuthResult> => {
-    setLoading(true);
-    try {
-      const result = await AuthService.signUpWithEmail(credentials);
-      
-      if (result.success) {
-        LoggingService.userAction('email_registration', undefined, { email: credentials.email });
+      if (error && error.code !== 'PGRST116') {
+        console.error('Ошибка загрузки профиля:', error);
       }
-      
-      return result;
-    } finally {
-      setLoading(false);
+
+      if (profile) {
+        console.log('✅ Профиль загружен из базы данных');
+        return {
+          id: profile.id,
+          email: profile.email || authUser.email,
+          name: profile.name,
+          username: profile.username,
+          avatar_url: profile.avatar_url,
+          bio: profile.bio,
+          privacy_settings: profile.privacy_settings,
+          is_guest: profile.is_guest,
+          email_verified: profile.email_verified,
+          interests: profile.interests,
+          created_at: profile.created_at
+        };
+      } else {
+        // Создаем fallback пользователя
+        console.log('⚠️ Профиль не найден, создаем fallback');
+        return createFallbackUser(authUser);
+      }
+    } catch (error) {
+      console.error('Ошибка в loadUserProfile:', error);
+      return createFallbackUser(authUser);
     }
-  }, []);
+  };
+
+  const createFallbackUser = (authUser: any): User => {
+    return {
+      id: authUser.id,
+      email: authUser.email || '',
+      name: authUser.user_metadata?.full_name || authUser.email || 'Пользователь',
+      avatar_url: authUser.user_metadata?.avatar_url,
+      username: authUser.user_metadata?.username || 
+               authUser.email?.split('@')[0] || 
+               `user_${authUser.id.substring(0, 8)}`,
+      privacy_settings: 'public',
+      is_guest: authUser.is_anonymous || false,
+      created_at: authUser.created_at || new Date().toISOString()
+    };
+  };
 
   /**
    * Вход через Google
    */
-  const signInWithGoogle = useCallback(async (): Promise<AuthResult> => {
-    setLoading(true);
+  const signInWithGoogle = useCallback(async () => {
     try {
-      const result = await AuthService.signInWithGoogle();
+      console.log('🔄 Начало входа через Google');
       
-      if (result.success) {
-        LoggingService.userAction('google_login');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      
+      if (error) {
+        console.error('Ошибка входа через Google:', error);
+        throw error;
       }
       
-      return result;
-    } finally {
-      setLoading(false);
+      console.log('✅ Вход через Google инициирован');
+    } catch (error) {
+      console.error('Ошибка в signInWithGoogle:', error);
+      throw error;
     }
   }, []);
 
   /**
    * Гостевой вход
    */
-  const signInAsGuest = useCallback(async (guestName?: string): Promise<AuthResult> => {
-    setLoading(true);
+  const signInAsGuest = useCallback(async (guestName?: string) => {
     try {
-      const result = await AuthService.signInAsGuest(guestName);
+      console.log('🔄 Начало гостевого входа');
       
-      if (result.success && result.user) {
-        setUser(result.user);
-        LoggingService.userAction('guest_login', result.user.id, { guestName });
-      }
+      const guestSession = GuestService.createGuestSession(guestName);
       
-      return result;
-    } finally {
-      setLoading(false);
+      setUser({
+        id: guestSession.user.id,
+        email: '',
+        name: guestSession.user.name,
+        username: guestSession.user.username,
+        is_guest: true,
+        created_at: guestSession.user.created_at
+      });
+
+      console.log('✅ Гостевой вход выполнен');
+    } catch (error) {
+      console.error('Ошибка гостевого входа:', error);
+      throw error;
     }
   }, []);
 
   /**
    * Выход
    */
-  const signOut = useCallback(async (): Promise<AuthResult> => {
-    setLoading(true);
+  const signOut = useCallback(async () => {
     try {
-      const currentUserId = user?.id;
-      const result = await AuthService.signOut();
+      console.log('🔄 Начало выхода из системы');
       
-      if (result.success) {
-        // Очищаем гостевую сессию если была
-        if (user?.is_guest) {
-          GuestService.clearGuestSession();
+      if (user?.is_guest) {
+        // Очищаем гостевую сессию
+        GuestService.clearGuestSession();
+      } else {
+        // Выходим из Supabase
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.error('Ошибка выхода из Supabase:', error);
+          throw error;
         }
-        
-        setUser(null);
-        LoggingService.userAction('logout', currentUserId);
       }
       
-      return result;
-    } finally {
-      setLoading(false);
+      setUser(null);
+      console.log('✅ Выход выполнен успешно');
+    } catch (error) {
+      console.error('Ошибка в signOut:', error);
+      throw error;
     }
   }, [user]);
 
   /**
-   * Восстановление пароля
-   */
-  const resetPassword = useCallback(async (email: string): Promise<AuthResult> => {
-    try {
-      const result = await AuthService.resetPassword(email);
-      
-      if (result.success) {
-        LoggingService.userAction('password_reset_request', undefined, { email });
-      }
-      
-      return result;
-    } catch (error: any) {
-      LoggingService.error('Ошибка восстановления пароля', error);
-      return {
-        success: false,
-        error: error.message,
-        message: 'Не удалось отправить запрос восстановления'
-      };
-    }
-  }, []);
-
-  /**
    * Обновление профиля
    */
-  const updateProfile = useCallback(async (updates: Partial<User>): Promise<AuthResult> => {
-    if (!user) {
-      return {
-        success: false,
-        error: 'Пользователь не авторизован',
-        message: 'Необходимо войти в систему'
-      };
-    }
+  const updateProfile = useCallback(async (updates: Partial<User>): Promise<boolean> => {
+    if (!user) return false;
 
     try {
       if (user.is_guest) {
@@ -239,16 +271,9 @@ export const EnhancedAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         if (success) {
           const updatedUser = { ...user, ...updates };
           setUser(updatedUser);
-          LoggingService.userAction('guest_profile_update', user.id, { updates: Object.keys(updates) });
-          
-          return {
-            success: true,
-            user: updatedUser,
-            message: 'Профиль обновлен'
-          };
-        } else {
-          throw new Error('Не удалось обновить гостевой профиль');
+          return true;
         }
+        return false;
       } else {
         // Обновляем обычный профиль
         const { error } = await supabase
@@ -260,38 +285,26 @@ export const EnhancedAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           .eq('id', user.id);
 
         if (error) {
-          throw error;
+          console.error('Ошибка обновления профиля:', error);
+          return false;
         }
 
         const updatedUser = { ...user, ...updates };
         setUser(updatedUser);
-        LoggingService.userAction('profile_update', user.id, { updates: Object.keys(updates) });
-
-        return {
-          success: true,
-          user: updatedUser,
-          message: 'Профиль обновлен'
-        };
+        return true;
       }
-    } catch (error: any) {
-      LoggingService.error('Ошибка обновления профиля', error, { userId: user.id });
-      return {
-        success: false,
-        error: ErrorHandler.handleSupabaseError(error, 'profile update'),
-        message: 'Не удалось обновить профиль'
-      };
+    } catch (error) {
+      console.error('Ошибка в updateProfile:', error);
+      return false;
     }
   }, [user]);
 
   const contextValue: AuthContextType = {
     user,
     loading,
-    signInWithEmail,
-    signUpWithEmail,
     signInWithGoogle,
     signInAsGuest,
     signOut,
-    resetPassword,
     updateProfile
   };
 

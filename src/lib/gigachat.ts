@@ -1,36 +1,36 @@
-export interface AIRecommendationRequest {
-  context: string;
-  userMessage?: string;
+// Сервис для работы с GigaChat API
+export interface GigaChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
 }
 
-export interface AIRecommendationResponse {
+export interface GigaChatResponse {
   reply: string;
+  usage?: any;
   fallback?: boolean;
   error?: string;
-  usage?: any;
 }
 
-export const getAIRecommendations = async (
-  request: AIRecommendationRequest
-): Promise<AIRecommendationResponse> => {
+export async function getAIRecommendations(params: {
+  context: string;
+  messages?: GigaChatMessage[];
+}): Promise<GigaChatResponse> {
   try {
-    console.log('🤖 Requesting AI recommendations...');
+    console.log('🤖 Отправка запроса к GigaChat API');
     
+    const messages: GigaChatMessage[] = params.messages || [
+      { role: 'user', content: 'Дай мне персональные рекомендации товаров на основе моих интересов' }
+    ];
+
     const response = await fetch('/.netlify/functions/gigachat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        messages: [
-          {
-            role: 'user',
-            content: request.userMessage || 
-              `Дай мне персонализированные рекомендации товаров для списка желаний на основе моих данных.`
-          }
-        ],
-        context: request.context
-      }),
+        messages,
+        context: params.context
+      })
     });
 
     if (!response.ok) {
@@ -38,131 +38,84 @@ export const getAIRecommendations = async (
     }
 
     const data = await response.json();
-    console.log('✅ AI recommendations received');
+    console.log('✅ Получен ответ от GigaChat API');
+    
     return data;
   } catch (error) {
-    console.error('❌ AI recommendations error:', error);
+    console.error('❌ Ошибка GigaChat API:', error);
     
     // Возвращаем fallback рекомендации
-    const fallbackRecommendations = `
+    return {
+      reply: `
 • **Умные часы Apple Watch или Samsung Galaxy Watch** (от 25,000 руб.) - для отслеживания здоровья и уведомлений
 • **Беспроводные наушники AirPods или Sony WH-1000XM4** (от 15,000 руб.) - для музыки и звонков
 • **Портативная колонка JBL или Marshall** (от 8,000 руб.) - для домашних вечеринок
 • **Электронная книга Kindle или PocketBook** (от 12,000 руб.) - для любителей чтения
 • **Подарочный сертификат в любимый магазин** (любая сумма) - универсальный вариант
-    `.trim();
-
-    return {
-      reply: fallbackRecommendations,
+      `.trim(),
       fallback: true,
       error: 'AI временно недоступен, показаны общие рекомендации'
     };
   }
-};
+}
 
-export const buildUserContext = async (userId: string, supabase: any): Promise<string> => {
+export async function buildUserContext(userId: string, supabase: any): Promise<string> {
   try {
-    console.log('🔍 Building user context for recommendations...');
-    
-    // Получаем профиль пользователя
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('interests, bio')
-      .eq('id', userId)
-      .single();
-
-    // Получаем списки желаний
-    const { data: wishlists } = await supabase
-      .from('wishlists')
-      .select(`
-        title,
-        category,
-        tags,
-        wishlist_items (
-          title,
-          price,
-          priority,
-          is_purchased
-        )
-      `)
-      .eq('user_id', userId)
-      .limit(5);
-
-    // Получаем интересы
+    // Получаем интересы пользователя
     const { data: interests } = await supabase
       .from('user_interests')
       .select('category, keywords')
       .eq('user_id', userId);
 
-    // Получаем историю просмотров
+    // Получаем последние просмотры
     const { data: views } = await supabase
       .from('product_views')
       .select(`
         wishlist_item:wishlist_items (
           title,
+          description,
           price,
-          priority
+          category
         )
       `)
       .eq('user_id', userId)
       .order('viewed_at', { ascending: false })
       .limit(10);
 
+    // Получаем списки пользователя
+    const { data: wishlists } = await supabase
+      .from('wishlists')
+      .select('title, description, category')
+      .eq('user_id', userId)
+      .limit(5);
+
     // Формируем контекст
-    let context = '';
+    let context = 'Пользователь интересуется: ';
     
-    if (profile?.bio) {
-      context += `О себе: ${profile.bio}. `;
-    }
-
-    if (profile?.interests?.length > 0) {
-      context += `Интересы: ${profile.interests.join(', ')}. `;
-    }
-
-    if (interests?.length > 0) {
+    if (interests && interests.length > 0) {
       const categories = interests.map(i => i.category).join(', ');
-      context += `Категории интересов: ${categories}. `;
+      context += categories + '. ';
     }
 
-    if (wishlists?.length > 0) {
-      const items = wishlists
-        .flatMap(w => w.wishlist_items || [])
-        .filter(item => !item.is_purchased)
-        .slice(0, 10)
-        .map(item => `${item.title} (${item.price ? item.price + ' руб.' : 'цена не указана'})`)
-        .join(', ');
-      
-      if (items) {
-        context += `Текущие желания: ${items}. `;
-      }
-
-      const categories = wishlists
-        .map(w => w.category)
-        .filter(Boolean)
-        .join(', ');
-      
-      if (categories) {
-        context += `Категории списков: ${categories}. `;
-      }
-    }
-
-    if (views?.length > 0) {
+    if (views && views.length > 0) {
+      context += 'Недавно просматривал: ';
       const viewedItems = views
-        .map(v => v.wishlist_item)
+        .map(v => v.wishlist_item?.title)
         .filter(Boolean)
-        .map(item => item.title)
+        .slice(0, 5)
         .join(', ');
-      
-      if (viewedItems) {
-        context += `Недавно просмотренные товары: ${viewedItems}. `;
-      }
+      context += viewedItems + '. ';
     }
 
-    const finalContext = context || 'Данные о предпочтениях пользователя отсутствуют';
-    console.log('✅ User context built successfully');
-    return finalContext;
+    if (wishlists && wishlists.length > 0) {
+      context += 'Создавал списки: ';
+      const listTitles = wishlists.map(w => w.title).join(', ');
+      context += listTitles + '. ';
+    }
+
+    return context || 'Новый пользователь без истории покупок';
   } catch (error) {
-    console.error('❌ Error building user context:', error);
-    return 'Не удалось загрузить контекст пользователя';
+    console.error('Ошибка построения контекста:', error);
+    return 'Пользователь без определенных предпочтений';
   }
-};
+}

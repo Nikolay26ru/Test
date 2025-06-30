@@ -1,56 +1,23 @@
 import React, { useState } from 'react';
 import { UserX, ArrowRight } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from './EnhancedAuthProvider';
 
 interface GuestLoginProps {
   onSuccess: () => void;
 }
 
 export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
+  const { signInAsGuest } = useAuth();
   const [loading, setLoading] = useState(false);
   const [guestName, setGuestName] = useState('');
 
-  const signInAsGuest = async () => {
+  const handleGuestSignIn = async () => {
     setLoading(true);
     try {
-      console.log('🔄 Starting anonymous sign in...');
-      
-      // Используем встроенную анонимную аутентификацию Supabase
-      const { data, error } = await supabase.auth.signInAnonymously();
-      
-      if (error) throw error;
-      
-      if (data.user) {
-        console.log('✅ Anonymous user created:', data.user.id);
-        
-        // Создаем профиль для анонимного пользователя
-        const username = guestName.trim() || `Гость_${Math.random().toString(36).substring(7)}`;
-        
-        try {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: data.user.id,
-              name: username,
-              username: username.toLowerCase().replace(/\s+/g, '_'),
-              is_guest: true,
-              privacy_settings: 'public',
-              email: null
-            });
-            
-          if (profileError) {
-            console.warn('⚠️ Could not create profile, but continuing:', profileError);
-          } else {
-            console.log('✅ Guest profile created in database');
-          }
-        } catch (profileError) {
-          console.warn('⚠️ Profile creation failed, but user can still continue:', profileError);
-        }
-        
-        onSuccess();
-      }
+      await signInAsGuest(guestName);
+      onSuccess();
     } catch (error) {
-      console.error('❌ Anonymous sign in error:', error);
+      console.error('Ошибка гостевого входа:', error);
       alert('Не удалось войти как гость. Попробуйте еще раз.');
     } finally {
       setLoading(false);
@@ -83,13 +50,14 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
             placeholder="Введите имя или оставьте пустым"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             maxLength={50}
+            disabled={loading}
           />
         </div>
 
         <button
-          onClick={signInAsGuest}
+          onClick={handleGuestSignIn}
           disabled={loading}
-          className="w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+          className="w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -102,7 +70,7 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
         </button>
 
         <div className="text-xs text-gray-500 space-y-1">
-          <p>• Ваши данные будут сохранены в базе данных</p>
+          <p>• Ваши данные будут сохранены локально</p>
           <p>• Вы сможете создавать списки и получать рекомендации</p>
           <p>• Для полного доступа рекомендуем зарегистрироваться</p>
           <p>• Гостевая сессия действует 24 часа</p>

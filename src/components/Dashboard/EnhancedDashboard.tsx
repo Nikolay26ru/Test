@@ -5,7 +5,7 @@ import { CreateWishListModal } from '../WishList/CreateWishListModal';
 import { AIRecommendations } from '../AI/AIRecommendations';
 import { CrowdfundingCard } from '../Crowdfunding/CrowdfundingCard';
 import { TrendingUp, Users, Gift, Star, Sparkles, Target } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../Auth/EnhancedAuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { WishList } from '../../types';
 
@@ -19,9 +19,12 @@ export const EnhancedDashboard: React.FC = () => {
 
   // Загрузка данных
   useEffect(() => {
-    if (user) {
+    if (user && !user.is_guest) {
       loadWishlists();
       loadCampaigns();
+    } else if (user?.is_guest) {
+      // Для гостей загружаем данные из localStorage
+      loadGuestWishlists();
     }
   }, [user]);
 
@@ -40,7 +43,7 @@ export const EnhancedDashboard: React.FC = () => {
   };
 
   const loadWishlists = async () => {
-    if (!user) return;
+    if (!user || user.is_guest) return;
 
     try {
       const { data, error } = await supabase
@@ -64,7 +67,21 @@ export const EnhancedDashboard: React.FC = () => {
     }
   };
 
+  const loadGuestWishlists = () => {
+    try {
+      const stored = localStorage.getItem(`wishlists_${user?.id}`);
+      if (stored) {
+        const guestWishlists = JSON.parse(stored);
+        setWishlists(guestWishlists);
+      }
+    } catch (error) {
+      console.error('Error loading guest wishlists:', error);
+    }
+  };
+
   const loadCampaigns = async () => {
+    if (user?.is_guest) return;
+
     try {
       const { data, error } = await supabase
         .from('campaigns')
@@ -100,24 +117,41 @@ export const EnhancedDashboard: React.FC = () => {
   }) => {
     if (!user) return;
 
-    try {
-      const { error } = await supabase
-        .from('wishlists')
-        .insert({
-          ...data,
-          user_id: user.id
-        });
+    if (user.is_guest) {
+      // Сохраняем в localStorage для гостей
+      const newWishlist = {
+        id: `guest_${Date.now()}`,
+        ...data,
+        user_id: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        items: []
+      };
 
-      if (error) {
+      const currentWishlists = [...wishlists, newWishlist];
+      setWishlists(currentWishlists);
+      localStorage.setItem(`wishlists_${user.id}`, JSON.stringify(currentWishlists));
+      showToast('Список желаний успешно создан!');
+    } else {
+      try {
+        const { error } = await supabase
+          .from('wishlists')
+          .insert({
+            ...data,
+            user_id: user.id
+          });
+
+        if (error) {
+          console.error('Error creating wishlist:', error);
+          showToast('Не удалось создать список. Попробуйте еще раз.');
+        } else {
+          loadWishlists();
+          showToast('Список желаний успешно создан!');
+        }
+      } catch (error) {
         console.error('Error creating wishlist:', error);
-        showToast('Не удалось создать список. Попробуйте еще раз.');
-      } else {
-        loadWishlists();
-        showToast('Список желаний успешно создан!');
+        showToast('Ошибка при создании списка');
       }
-    } catch (error) {
-      console.error('Error creating wishlist:', error);
-      showToast('Ошибка при создании списка');
     }
   };
 
@@ -164,7 +198,7 @@ export const EnhancedDashboard: React.FC = () => {
   const tabs = [
     { id: 'lists', label: 'Мои списки', icon: Gift },
     { id: 'ai', label: 'AI-советы', icon: Sparkles },
-    { id: 'crowdfunding', label: 'Краудфандинг', icon: Target }
+    ...(user?.is_guest ? [] : [{ id: 'crowdfunding', label: 'Краудфандинг', icon: Target }])
   ];
 
   return (
@@ -186,7 +220,7 @@ export const EnhancedDashboard: React.FC = () => {
           </h1>
           <p className="text-gray-600">
             {user?.is_guest 
-              ? 'Вы вошли как гость. Ваши данные сохраняются в базе данных. Зарегистрируйтесь для полного доступа к функциям.'
+              ? 'Вы вошли как гость. Ваши данные сохраняются локально. Зарегистрируйтесь для полного доступа к функциям.'
               : 'Управляйте своими списками желаний и получайте AI-рекомендации'
             }
           </p>
@@ -202,7 +236,7 @@ export const EnhancedDashboard: React.FC = () => {
               <div>
                 <h4 className="font-medium text-orange-800">Гостевой режим</h4>
                 <p className="text-sm text-orange-700">
-                  Ваши данные сохраняются в базе данных, но гостевая сессия ограничена по времени. Создайте аккаунт для постоянного доступа.
+                  Ваши данные сохраняются локально в браузере. Создайте аккаунт для синхронизации между устройствами.
                 </p>
               </div>
             </div>
@@ -287,7 +321,7 @@ export const EnhancedDashboard: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'crowdfunding' && (
+        {activeTab === 'crowdfunding' && !user?.is_guest && (
           <div>
             <div className="mb-6">
               <h2 className="text-2xl font-semibold text-gray-900 mb-2">

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import { getAIRecommendations, buildUserContext } from '../../lib/gigachat';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../Auth/EnhancedAuthProvider';
 import { supabase } from '../../lib/supabase';
 
 interface AIRecommendationsProps {
@@ -25,24 +25,29 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
     setError('');
 
     try {
-      // Проверяем кэш
-      const { data: cached } = await supabase
-        .from('ai_recommendations')
-        .select('recommendations_text, expires_at')
-        .eq('user_id', user.id)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      // Проверяем кэш только для обычных пользователей
+      if (!user.is_guest) {
+        const { data: cached } = await supabase
+          .from('ai_recommendations')
+          .select('recommendations_text, expires_at')
+          .eq('user_id', user.id)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
 
-      if (cached) {
-        setRecommendations(cached.recommendations_text);
-        setLoading(false);
-        return;
+        if (cached) {
+          setRecommendations(cached.recommendations_text);
+          setLoading(false);
+          return;
+        }
       }
 
       // Получаем новые рекомендации
-      const context = await buildUserContext(user.id, supabase);
+      const context = user.is_guest 
+        ? 'Новый пользователь без истории покупок'
+        : await buildUserContext(user.id, supabase);
+      
       const response = await getAIRecommendations({ context });
 
       if (response.error && !response.fallback) {
@@ -50,16 +55,18 @@ export const AIRecommendations: React.FC<AIRecommendationsProps> = ({
       } else {
         setRecommendations(response.reply);
         
-        // Сохраняем в кэш
-        const contextHash = btoa(context).substring(0, 50);
-        await supabase
-          .from('ai_recommendations')
-          .upsert({
-            user_id: user.id,
-            recommendations_text: response.reply,
-            context_hash: contextHash,
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-          });
+        // Сохраняем в кэш только для обычных пользователей
+        if (!user.is_guest) {
+          const contextHash = btoa(context).substring(0, 50);
+          await supabase
+            .from('ai_recommendations')
+            .upsert({
+              user_id: user.id,
+              recommendations_text: response.reply,
+              context_hash: contextHash,
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+            });
+        }
       }
     } catch (err) {
       console.error('AI recommendations error:', err);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Gift, Heart, User, LogOut, Plus, Users, Sparkles, UserCheck } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../Auth/EnhancedAuthProvider';
 
 interface HeaderProps {
   onCreateWishlist: () => void;
@@ -11,6 +11,15 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [showUpgradePrompt, setShowUpgradePrompt] = React.useState(false);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate('/auth');
+    } catch (error) {
+      console.error('Ошибка выхода:', error);
+    }
+  };
 
   const handleUpgradeAccount = () => {
     // Перенаправляем на страницу регистрации для гостей
@@ -45,20 +54,24 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
             >
               Мои списки
             </button>
-            <button 
-              onClick={() => navigate('/friends')}
-              className="text-gray-700 hover:text-purple-600 transition-colors font-medium flex items-center space-x-1"
-            >
-              <Users className="h-4 w-4" />
-              <span>Друзья</span>
-            </button>
-            <button 
-              onClick={() => navigate('/recommendations')}
-              className="text-gray-700 hover:text-purple-600 transition-colors font-medium flex items-center space-x-1"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>Рекомендации</span>
-            </button>
+            {!user?.is_guest && (
+              <>
+                <button 
+                  onClick={() => navigate('/friends')}
+                  className="text-gray-700 hover:text-purple-600 transition-colors font-medium flex items-center space-x-1"
+                >
+                  <Users className="h-4 w-4" />
+                  <span>Друзья</span>
+                </button>
+                <button 
+                  onClick={() => navigate('/recommendations')}
+                  className="text-gray-700 hover:text-purple-600 transition-colors font-medium flex items-center space-x-1"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>Рекомендации</span>
+                </button>
+              </>
+            )}
           </nav>
 
           {/* User Actions */}
@@ -143,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({ onCreateWishlist }) => {
                   </div>
                 </div>
                 <button
-                  onClick={signOut}
+                  onClick={handleSignOut}
                   className="text-gray-500 hover:text-gray-700 transition-colors p-2"
                   title="Выйти"
                 >

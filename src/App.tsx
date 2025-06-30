@@ -9,16 +9,6 @@ import { ProfileScreen } from './components/Profile/ProfileScreen';
 import { FriendsManager } from './components/Friends/FriendsManager';
 import { ProductRecommendations } from './components/Products/ProductRecommendations';
 import { LoadingSpinner } from './components/Layout/LoadingSpinner';
-import { LoggingService } from './lib/logging/LoggingService';
-import { EmailService } from './lib/email/EmailService';
-
-// Инициализация сервисов
-LoggingService.initialize({
-  logLevel: process.env.NODE_ENV === 'production' ? 1 : 0, // INFO в продакшене, DEBUG в разработке
-  maxLogs: 1000
-});
-
-EmailService.initialize();
 
 const AuthRoute: React.FC = () => {
   const { user, loading } = useAuth();
@@ -130,7 +120,7 @@ const AppContent: React.FC = () => {
 };
 
 function App() {
-  LoggingService.info('Запуск приложения WishFlick');
+  console.log('🚀 Запуск приложения WishFlick');
   
   return (
     <Router>
