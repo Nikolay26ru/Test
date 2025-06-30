@@ -1,6 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { EnhancedAuthProvider, useAuth } from './components/Auth/EnhancedAuthProvider';
 import { EnhancedLoginScreen } from './components/Auth/EnhancedLoginScreen';
 import { AuthCallback } from './components/Auth/AuthCallback';
 import { EnhancedDashboard } from './components/Dashboard/EnhancedDashboard';
@@ -9,12 +9,19 @@ import { ProfileScreen } from './components/Profile/ProfileScreen';
 import { FriendsManager } from './components/Friends/FriendsManager';
 import { ProductRecommendations } from './components/Products/ProductRecommendations';
 import { LoadingSpinner } from './components/Layout/LoadingSpinner';
-import { ErrorHandler } from './lib/errorHandler';
+import { LoggingService } from './lib/logging/LoggingService';
+import { EmailService } from './lib/email/EmailService';
+
+// Инициализация сервисов
+LoggingService.initialize({
+  logLevel: process.env.NODE_ENV === 'production' ? 1 : 0, // INFO в продакшене, DEBUG в разработке
+  maxLogs: 1000
+});
+
+EmailService.initialize();
 
 const AuthRoute: React.FC = () => {
   const { user, loading } = useAuth();
-  const [searchParams] = useSearchParams();
-  const mode = searchParams.get('mode');
 
   if (loading) {
     return (
@@ -24,18 +31,33 @@ const AuthRoute: React.FC = () => {
     );
   }
 
-  // Если пользователь уже авторизован и не гость, или гость не хочет регистрироваться
-  if (user && (!user.is_guest || mode !== 'register')) {
+  if (user) {
     return <Navigate to="/" replace />;
   }
 
   return <EnhancedLoginScreen />;
 };
 
-const AppContent: React.FC = () => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
 
-  console.log('🎯 App: Current state', { hasUser: !!user, loading });
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Загрузка..." />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const AppContent: React.FC = () => {
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -60,55 +82,61 @@ const AppContent: React.FC = () => {
 
   return (
     <Routes>
-      <Route 
-        path="/auth" 
-        element={<AuthRoute />} 
-      />
-      <Route 
-        path="/auth/callback" 
-        element={<AuthCallback />} 
-      />
+      <Route path="/auth" element={<AuthRoute />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route 
         path="/" 
-        element={user ? <EnhancedDashboard /> : <Navigate to="/auth" replace />} 
+        element={
+          <ProtectedRoute>
+            <EnhancedDashboard />
+          </ProtectedRoute>
+        } 
       />
       <Route 
         path="/wishlist/:id" 
-        element={user ? <WishlistDetailScreen /> : <Navigate to="/auth" replace />} 
+        element={
+          <ProtectedRoute>
+            <WishlistDetailScreen />
+          </ProtectedRoute>
+        } 
       />
       <Route 
         path="/profile" 
-        element={user ? <ProfileScreen /> : <Navigate to="/auth" replace />} 
+        element={
+          <ProtectedRoute>
+            <ProfileScreen />
+          </ProtectedRoute>
+        } 
       />
       <Route 
         path="/friends" 
-        element={user ? <FriendsManager /> : <Navigate to="/auth" replace />} 
+        element={
+          <ProtectedRoute>
+            <FriendsManager />
+          </ProtectedRoute>
+        } 
       />
       <Route 
         path="/recommendations" 
-        element={user ? <ProductRecommendations /> : <Navigate to="/auth" replace />} 
+        element={
+          <ProtectedRoute>
+            <ProductRecommendations />
+          </ProtectedRoute>
+        } 
       />
-      <Route 
-        path="*" 
-        element={<Navigate to={user ? "/" : "/auth"} replace />} 
-      />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
 
 function App() {
-  console.log('🚀 App: Starting application...');
-  
-  // Инициализируем обработчик ошибок
-  React.useEffect(() => {
-    console.log('🔧 App: Error handler initialized');
-  }, []);
+  LoggingService.info('Запуск приложения WishFlick');
   
   return (
     <Router>
-      <AuthProvider>
+      <EnhancedAuthProvider>
         <AppContent />
-      </AuthProvider>
+      </EnhancedAuthProvider>
     </Router>
   );
 }
