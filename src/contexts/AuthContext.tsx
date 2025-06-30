@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { ErrorHandler } from '../lib/error/ErrorHandler';
+import { LoggingService } from '../lib/logging/LoggingService';
 import type { AuthContextType, User } from '../types';
 
 const AuthContext = createContext<AuthContextType>({
@@ -22,21 +24,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('🔄 AuthProvider: Initializing auth state...');
+    LoggingService.info('AuthProvider: Инициализация состояния авторизации');
     
     // Проверяем текущую сессию Supabase
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
-        console.error('❌ AuthProvider: Error getting session:', error);
+        LoggingService.error('AuthProvider: Ошибка получения сессии', error);
+        ErrorHandler.logError(error, { operation: 'get_session' });
         setLoading(false);
         return;
       }
 
       if (session?.user) {
-        console.log('✅ AuthProvider: Found existing session for user:', session.user.id);
+        LoggingService.info('AuthProvider: Найдена существующая сессия', { userId: session.user.id });
         loadUserProfile(session.user);
       } else {
-        console.log('ℹ️ AuthProvider: No existing session found');
+        LoggingService.info('AuthProvider: Существующая сессия не найдена');
         setLoading(false);
       }
     });
@@ -44,13 +47,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Слушаем изменения авторизации
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 AuthProvider: Auth state changed:', event);
+        LoggingService.info('AuthProvider: Изменение состояния авторизации', { event });
         
         if (session?.user) {
-          console.log('✅ AuthProvider: User signed in:', session.user.id);
+          LoggingService.info('AuthProvider: Пользователь вошел в систему', { userId: session.user.id });
           await loadUserProfile(session.user);
         } else if (event === 'SIGNED_OUT') {
-          console.log('ℹ️ AuthProvider: User signed out');
+          LoggingService.info('AuthProvider: Пользователь вышел из системы');
           setUser(null);
           setLoading(false);
         }
@@ -58,27 +61,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => {
-      console.log('🧹 AuthProvider: Cleaning up auth subscription');
+      LoggingService.info('AuthProvider: Очистка подписки на изменения авторизации');
       subscription.unsubscribe();
     };
   }, []);
 
   const loadUserProfile = async (authUser: any) => {
-    console.log('🔍 AuthProvider: Loading profile for user:', authUser.id);
+    LoggingService.info('AuthProvider: Загрузка профиля пользователя', { userId: authUser.id });
     
     // Устанавливаем таймаут на весь процесс
     const timeoutId = setTimeout(() => {
-      console.warn('⏰ AuthProvider: Profile loading timeout, using fallback');
+      LoggingService.warn('AuthProvider: Таймаут загрузки профиля, используем fallback');
       const fallbackUser = createFallbackUser(authUser);
       setUser(fallbackUser);
       setLoading(false);
-    }, 8000); // 8 секунд таймаут
+    }, 8000);
 
     try {
       // Сразу создаем fallback пользователя
       const fallbackUser = createFallbackUser(authUser);
       
-      console.log('🔍 AuthProvider: Attempting to load profile from database...');
+      LoggingService.info('AuthProvider: Попытка загрузки профиля из базы данных');
       
       // Пытаемся загрузить профиль с коротким таймаутом
       const profilePromise = supabase
@@ -96,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
         
         if (profile && !error) {
-          console.log('✅ AuthProvider: Profile loaded from database:', profile.name);
+          LoggingService.info('AuthProvider: Профиль загружен из базы данных', { name: profile.name });
           clearTimeout(timeoutId);
           setUser(profile);
           setLoading(false);
@@ -104,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (error?.code === 'PGRST116') {
-          console.log('🔧 AuthProvider: Profile not found, creating...');
+          LoggingService.info('AuthProvider: Профиль не найден, создаем новый');
           // Пытаемся создать профиль, но не ждем долго
           const createPromise = supabase
             .from('profiles')
@@ -119,28 +122,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const { data: newProfile } = await Promise.race([createPromise, createTimeoutPromise]) as any;
             if (newProfile) {
-              console.log('✅ AuthProvider: Profile created successfully');
+              LoggingService.info('AuthProvider: Профиль успешно создан');
               clearTimeout(timeoutId);
               setUser(newProfile);
               setLoading(false);
               return;
             }
           } catch (createError) {
-            console.warn('⚠️ AuthProvider: Failed to create profile, using fallback');
+            LoggingService.warn('AuthProvider: Не удалось создать профиль, используем fallback');
+            ErrorHandler.logError(createError, { operation: 'create_profile', userId: authUser.id });
           }
         }
       } catch (dbError) {
-        console.warn('⚠️ AuthProvider: Database operation failed:', dbError);
+        LoggingService.warn('AuthProvider: Операция с базой данных не удалась', dbError);
+        ErrorHandler.logError(dbError, { operation: 'load_profile', userId: authUser.id });
       }
 
       // Если дошли сюда - используем fallback
-      console.log('🔧 AuthProvider: Using fallback user data');
+      LoggingService.info('AuthProvider: Используем fallback данные пользователя');
       clearTimeout(timeoutId);
       setUser(fallbackUser);
       setLoading(false);
 
     } catch (error) {
-      console.error('❌ AuthProvider: Critical error in loadUserProfile:', error);
+      LoggingService.error('AuthProvider: Критическая ошибка в loadUserProfile', error);
+      ErrorHandler.logError(error, { operation: 'load_user_profile', userId: authUser.id });
       clearTimeout(timeoutId);
       const fallbackUser = createFallbackUser(authUser);
       setUser(fallbackUser);
@@ -149,7 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const createFallbackUser = (authUser: any): User => {
-    console.log('🔧 AuthProvider: Creating fallback user');
+    LoggingService.info('AuthProvider: Создание fallback пользователя');
     return {
       id: authUser.id,
       email: authUser.email || '',
@@ -165,7 +171,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async () => {
-    console.log('🔄 AuthProvider: Starting Google sign in...');
+    LoggingService.info('AuthProvider: Начало входа через Google');
     
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -176,29 +182,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       if (error) {
-        console.error('❌ AuthProvider: Google sign in error:', error);
+        LoggingService.error('AuthProvider: Ошибка входа через Google', error);
+        ErrorHandler.logError(error, { operation: 'google_signin' });
+        ErrorHandler.showToast(ErrorHandler.handleAuthError(error), 'error');
         throw error;
       }
       
-      console.log('✅ AuthProvider: Google sign in initiated');
+      LoggingService.info('AuthProvider: Вход через Google инициирован');
     } catch (error) {
-      console.error('❌ AuthProvider: Error in signInWithGoogle:', error);
+      LoggingService.error('AuthProvider: Ошибка в signInWithGoogle', error);
+      ErrorHandler.logError(error, { operation: 'google_signin' });
       throw error;
     }
   };
 
   const signOut = async () => {
-    console.log('🔄 AuthProvider: Signing out...');
+    LoggingService.info('AuthProvider: Начало выхода из системы');
     
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
-        console.error('❌ AuthProvider: Sign out error:', error);
+        LoggingService.error('AuthProvider: Ошибка выхода из системы', error);
+        ErrorHandler.logError(error, { operation: 'signout' });
+        ErrorHandler.showToast(ErrorHandler.handleAuthError(error), 'error');
         throw error;
       }
-      console.log('✅ AuthProvider: Successfully signed out');
+      LoggingService.info('AuthProvider: Успешный выход из системы');
+      ErrorHandler.showToast('Вы успешно вышли из системы', 'success');
     } catch (error) {
-      console.error('❌ AuthProvider: Error in signOut:', error);
+      LoggingService.error('AuthProvider: Ошибка в signOut', error);
+      ErrorHandler.logError(error, { operation: 'signout' });
       throw error;
     }
   };
@@ -210,7 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut
   };
 
-  console.log('🔄 AuthProvider: Rendering with state:', { 
+  LoggingService.debug('AuthProvider: Рендеринг с состоянием', { 
     hasUser: !!user, 
     loading, 
     userName: user?.name,
