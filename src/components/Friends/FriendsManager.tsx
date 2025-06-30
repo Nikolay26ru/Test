@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, UserPlus, UserMinus, Check, X, Search, Mail, ArrowLeft } from 'lucide-react';
+import { Users, UserPlus, UserMinus, Check, X, Search, Mail, ArrowLeft, AlertCircle } from 'lucide-react';
 import { FriendsService } from '../../lib/friendsService';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { ErrorHandler } from '../../lib/errorHandler';
+import { LoadingSpinner } from '../Layout/LoadingSpinner';
 import type { User, FriendRequest, FriendshipStatus } from '../../types';
 
 export const FriendsManager: React.FC = () => {
@@ -15,7 +17,7 @@ export const FriendsManager: React.FC = () => {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [searching, setSearching] = useState(false);
   const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'search'>('friends');
 
   useEffect(() => {
@@ -40,7 +42,7 @@ export const FriendsManager: React.FC = () => {
       setOutgoingRequests(outgoing);
     } catch (error) {
       console.error('Error loading friends data:', error);
-      showMessage('Ошибка загрузки данных о друзьях', 'error');
+      ErrorHandler.showToast('Ошибка загрузки данных о друзьях');
     } finally {
       setLoading(false);
     }
@@ -49,7 +51,7 @@ export const FriendsManager: React.FC = () => {
   const searchUsers = async () => {
     if (!searchQuery.trim() || !user) return;
 
-    setLoading(true);
+    setSearching(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -61,11 +63,11 @@ export const FriendsManager: React.FC = () => {
       if (error) throw error;
 
       setSearchResults(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error searching users:', error);
-      showMessage('Ошибка поиска пользователей', 'error');
+      ErrorHandler.showToast(ErrorHandler.handleSupabaseError(error, 'user search'));
     } finally {
-      setLoading(false);
+      setSearching(false);
     }
   };
 
@@ -73,16 +75,18 @@ export const FriendsManager: React.FC = () => {
     if (!user) return;
 
     const result = await FriendsService.sendFriendRequest(user.id, targetUserId);
-    showMessage(result.message, result.success ? 'success' : 'error');
+    ErrorHandler.showToast(result.message, result.success ? 'success' : 'error');
     
     if (result.success) {
       loadFriendsData();
+      // Обновляем результаты поиска, убирая пользователя, которому отправили запрос
+      setSearchResults(prev => prev.filter(u => u.id !== targetUserId));
     }
   };
 
   const handleAcceptRequest = async (requestId: string) => {
     const result = await FriendsService.acceptFriendRequest(requestId);
-    showMessage(result.message, result.success ? 'success' : 'error');
+    ErrorHandler.showToast(result.message, result.success ? 'success' : 'error');
     
     if (result.success) {
       loadFriendsData();
@@ -91,7 +95,7 @@ export const FriendsManager: React.FC = () => {
 
   const handleDeclineRequest = async (requestId: string) => {
     const result = await FriendsService.declineFriendRequest(requestId);
-    showMessage(result.message, result.success ? 'success' : 'error');
+    ErrorHandler.showToast(result.message, result.success ? 'success' : 'error');
     
     if (result.success) {
       loadFriendsData();
@@ -104,16 +108,11 @@ export const FriendsManager: React.FC = () => {
     if (!confirm(`Удалить ${friendName} из друзей?`)) return;
 
     const result = await FriendsService.removeFriend(user.id, friendId);
-    showMessage(result.message, result.success ? 'success' : 'error');
+    ErrorHandler.showToast(result.message, result.success ? 'success' : 'error');
     
     if (result.success) {
       loadFriendsData();
     }
-  };
-
-  const showMessage = (text: string, type: 'success' | 'error' = 'success') => {
-    setMessage(text);
-    setTimeout(() => setMessage(''), 3000);
   };
 
   const UserCard: React.FC<{ 
@@ -122,15 +121,20 @@ export const FriendsManager: React.FC = () => {
     actionType?: 'add' | 'remove' | 'accept' | 'decline';
     onAction?: () => void;
     requestId?: string;
-  }> = ({ user: targetUser, showActions = false, actionType, onAction, requestId }) => (
+    disabled?: boolean;
+  }> = ({ user: targetUser, showActions = false, actionType, onAction, requestId, disabled = false }) => (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex items-center space-x-3">
-        <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+        <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
           {targetUser.avatar_url ? (
             <img
               src={targetUser.avatar_url}
               alt={targetUser.name}
               className="w-full h-full rounded-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
             />
           ) : (
             <Users className="h-6 w-6 text-purple-600" />
@@ -150,7 +154,8 @@ export const FriendsManager: React.FC = () => {
             {actionType === 'add' && (
               <button
                 onClick={onAction}
-                className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                disabled={disabled}
+                className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Добавить в друзья"
               >
                 <UserPlus className="h-4 w-4" />
@@ -160,7 +165,8 @@ export const FriendsManager: React.FC = () => {
             {actionType === 'remove' && (
               <button
                 onClick={onAction}
-                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                disabled={disabled}
+                className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Удалить из друзей"
               >
                 <UserMinus className="h-4 w-4" />
@@ -171,14 +177,16 @@ export const FriendsManager: React.FC = () => {
               <>
                 <button
                   onClick={() => handleAcceptRequest(requestId)}
-                  className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  disabled={disabled}
+                  className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Принять запрос"
                 >
                   <Check className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => handleDeclineRequest(requestId)}
-                  className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  disabled={disabled}
+                  className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Отклонить запрос"
                 >
                   <X className="h-4 w-4" />
@@ -190,6 +198,14 @@ export const FriendsManager: React.FC = () => {
       </div>
     </div>
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Загрузка данных о друзьях..." />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -213,17 +229,6 @@ export const FriendsManager: React.FC = () => {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Message */}
-        {message && (
-          <div className={`mb-4 p-3 rounded-lg ${
-            message.includes('Ошибка') || message.includes('Не удалось') 
-              ? 'bg-red-100 text-red-700' 
-              : 'bg-green-100 text-green-700'
-          }`}>
-            {message}
-          </div>
-        )}
-
         {/* Tabs */}
         <div className="mb-6">
           <div className="border-b border-gray-200">
@@ -236,7 +241,7 @@ export const FriendsManager: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                  className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors ${
                     activeTab === tab.id
                       ? 'border-purple-500 text-purple-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -352,15 +357,21 @@ export const FriendsManager: React.FC = () => {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
                     placeholder="Поиск по имени или username..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    disabled={searching}
                   />
                 </div>
                 <button
                   onClick={searchUsers}
-                  disabled={loading || !searchQuery.trim()}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                  disabled={searching || !searchQuery.trim()}
+                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
-                  {loading ? 'Поиск...' : 'Найти'}
+                  {searching ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                  <span>{searching ? 'Поиск...' : 'Найти'}</span>
                 </button>
               </div>
             </div>
@@ -385,9 +396,9 @@ export const FriendsManager: React.FC = () => {
               </div>
             )}
 
-            {searchQuery && searchResults.length === 0 && !loading && (
+            {searchQuery && searchResults.length === 0 && !searching && (
               <div className="text-center py-8">
-                <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">Пользователи не найдены</p>
                 <p className="text-sm text-gray-500">Попробуйте изменить запрос</p>
               </div>

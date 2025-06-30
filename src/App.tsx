@@ -8,6 +8,8 @@ import { WishlistDetailScreen } from './components/WishList/WishlistDetailScreen
 import { ProfileScreen } from './components/Profile/ProfileScreen';
 import { FriendsManager } from './components/Friends/FriendsManager';
 import { ProductRecommendations } from './components/Products/ProductRecommendations';
+import { LoadingSpinner } from './components/Layout/LoadingSpinner';
+import { ErrorHandler } from './lib/errorHandler';
 
 const AuthRoute: React.FC = () => {
   const { user, loading } = useAuth();
@@ -17,10 +19,7 @@ const AuthRoute: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка...</p>
-        </div>
+        <LoadingSpinner size="lg" text="Проверка авторизации..." />
       </div>
     );
   }
@@ -42,17 +41,18 @@ const AppContent: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка...</p>
-          <p className="text-xs text-gray-400 mt-2">
-            Если загрузка затянулась, обновите страницу
-          </p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
-          >
-            Обновить страницу
-          </button>
+          <LoadingSpinner size="lg" text="Загрузка приложения..." />
+          <div className="mt-4">
+            <p className="text-xs text-gray-400 mt-2">
+              Если загрузка затянулась, обновите страницу
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm transition-colors"
+            >
+              Обновить страницу
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -98,6 +98,11 @@ const AppContent: React.FC = () => {
 
 function App() {
   console.log('🚀 App: Starting application...');
+  
+  // Инициализируем обработчик ошибок
+  React.useEffect(() => {
+    console.log('🔧 App: Error handler initialized');
+  }, []);
   
   return (
     <Router>

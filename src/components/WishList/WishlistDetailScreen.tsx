@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit3, Trash2, Check, X, ShoppingCart, Star, Heart, Users, UserPlus } from 'lucide-react';
+import { ArrowLeft, Plus, Edit3, Trash2, Check, X, ShoppingCart, Star, Heart, Users, UserPlus, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { FriendsService } from '../../lib/friendsService';
 import { ProductRecommendationService } from '../../lib/productRecommendationService';
+import { ValidationService } from '../../lib/validation';
+import { ErrorHandler } from '../../lib/errorHandler';
+import { LoadingSpinner } from '../Layout/LoadingSpinner';
 import type { WishList, WishItem, FriendshipStatus } from '../../types';
 
 export const WishlistDetailScreen: React.FC = () => {
@@ -18,6 +21,8 @@ export const WishlistDetailScreen: React.FC = () => {
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>('none');
   const [friendsCount, setFriendsCount] = useState(0);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const [newItem, setNewItem] = useState({
     title: '',
@@ -61,10 +66,19 @@ export const WishlistDetailScreen: React.FC = () => {
         .eq('id', id)
         .single();
 
-      if (wishlistError) throw wishlistError;
+      if (wishlistError) {
+        if (wishlistError.code === 'PGRST116') {
+          ErrorHandler.showToast('Список желаний не найден');
+        } else {
+          ErrorHandler.showToast(ErrorHandler.handleSupabaseError(wishlistError, 'wishlist loading'));
+        }
+        navigate('/');
+        return;
+      }
 
       // Проверяем доступ
       if (!wishlistData.is_public && wishlistData.user_id !== user?.id) {
+        ErrorHandler.showToast('У вас нет доступа к этому списку');
         navigate('/');
         return;
       }
@@ -78,18 +92,22 @@ export const WishlistDetailScreen: React.FC = () => {
         .eq('wishlist_id', id)
         .order('created_at', { ascending: false });
 
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error('Error loading items:', itemsError);
+        ErrorHandler.showToast('Не удалось загрузить товары');
+      } else {
+        setItems(itemsData || []);
 
-      setItems(itemsData || []);
-
-      // Записываем просмотры товаров для рекомендаций (только если это не наш список)
-      if (user && wishlistData.user_id !== user.id && itemsData) {
-        for (const item of itemsData.slice(0, 3)) { // Записываем только первые 3 товара
-          await ProductRecommendationService.recordProductView(user.id, item.id);
+        // Записываем просмотры товаров для рекомендаций (только если это не наш список)
+        if (user && wishlistData.user_id !== user.id && itemsData) {
+          for (const item of itemsData.slice(0, 3)) { // Записываем только первые 3 товара
+            await ProductRecommendationService.recordProductView(user.id, item.id);
+          }
         }
       }
     } catch (error) {
       console.error('Error loading wishlist:', error);
+      ErrorHandler.showToast('Ошибка при загрузке списка');
       navigate('/');
     } finally {
       setLoading(false);
@@ -119,21 +137,32 @@ export const WishlistDetailScreen: React.FC = () => {
     
     if (result.success) {
       setFriendshipStatus('pending_sent');
-      alert(result.message);
+      ErrorHandler.showToast(result.message, 'success');
     } else {
-      alert(result.message);
+      ErrorHandler.showToast(result.message, 'error');
     }
   };
 
-  const addItem = async () => {
-    if (!wishlist || !user || !newItem.title.trim()) return;
+  const validateItemForm = () => {
+    const validation = ValidationService.validateWishItemForm(newItem);
+    setErrors(validation.errors);
+    return validation.isValid;
+  };
 
+  const addItem = async () => {
+    if (!wishlist || !user || !validateItemForm()) return;
+
+    setSubmitting(true);
     try {
       const { data, error } = await supabase
         .from('wishlist_items')
         .insert({
-          ...newItem,
+          title: newItem.title.trim(),
+          description: newItem.description.trim() || null,
           price: newItem.price ? parseFloat(newItem.price) : null,
+          image_url: newItem.image_url.trim() || null,
+          store_url: newItem.store_url.trim() || null,
+          priority: newItem.priority,
           wishlist_id: wishlist.id
         })
         .select()
@@ -150,10 +179,14 @@ export const WishlistDetailScreen: React.FC = () => {
         store_url: '',
         priority: 'medium'
       });
+      setErrors({});
       setShowAddForm(false);
-    } catch (error) {
+      ErrorHandler.showToast('Товар успешно добавлен', 'success');
+    } catch (error: any) {
       console.error('Error adding item:', error);
-      alert('Не удалось добавить товар');
+      ErrorHandler.showToast(ErrorHandler.handleSupabaseError(error, 'item creation'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -174,9 +207,14 @@ export const WishlistDetailScreen: React.FC = () => {
           ? { ...item, is_purchased: !isPurchased, purchased_by: !isPurchased ? user?.id : null }
           : item
       ));
-    } catch (error) {
+
+      ErrorHandler.showToast(
+        !isPurchased ? 'Товар отмечен как купленный' : 'Товар отмечен как не купленный',
+        'success'
+      );
+    } catch (error: any) {
       console.error('Error updating item:', error);
-      alert('Не удалось обновить статус товара');
+      ErrorHandler.showToast(ErrorHandler.handleSupabaseError(error, 'item update'));
     }
   };
 
@@ -192,9 +230,10 @@ export const WishlistDetailScreen: React.FC = () => {
       if (error) throw error;
 
       setItems(items.filter(item => item.id !== itemId));
-    } catch (error) {
+      ErrorHandler.showToast('Товар удален', 'success');
+    } catch (error: any) {
       console.error('Error deleting item:', error);
-      alert('Не удалось удалить товар');
+      ErrorHandler.showToast(ErrorHandler.handleSupabaseError(error, 'item deletion'));
     }
   };
 
@@ -240,10 +279,7 @@ export const WishlistDetailScreen: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка списка...</p>
-        </div>
+        <LoadingSpinner size="lg" text="Загрузка списка..." />
       </div>
     );
   }
@@ -252,11 +288,12 @@ export const WishlistDetailScreen: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Список не найден</h2>
           <p className="text-gray-600 mb-4">Возможно, список был удален или у вас нет доступа</p>
           <button
             onClick={() => navigate('/')}
-            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
           >
             Вернуться на главную
           </button>
@@ -313,7 +350,7 @@ export const WishlistDetailScreen: React.FC = () => {
                       : friendshipStatus === 'pending_sent'
                       ? 'bg-yellow-100 text-yellow-700'
                       : 'bg-purple-600 text-white hover:bg-purple-700'
-                  } disabled:opacity-50`}
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   <UserPlus className="h-4 w-4" />
                   <span>{getFriendshipStatusText(friendshipStatus)}</span>
@@ -323,7 +360,7 @@ export const WishlistDetailScreen: React.FC = () => {
               {isOwner && (
                 <button
                   onClick={() => setShowAddForm(true)}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center space-x-2"
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Добавить товар</span>
@@ -342,6 +379,10 @@ export const WishlistDetailScreen: React.FC = () => {
               src={wishlist.cover_image}
               alt={wishlist.title}
               className="w-full h-48 object-cover rounded-lg mb-4"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
             />
           )}
           
@@ -370,8 +411,20 @@ export const WishlistDetailScreen: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Добавить новый товар</h3>
               <button
-                onClick={() => setShowAddForm(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setErrors({});
+                  setNewItem({
+                    title: '',
+                    description: '',
+                    price: '',
+                    image_url: '',
+                    store_url: '',
+                    priority: 'medium'
+                  });
+                }}
+                disabled={submitting}
+                className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -386,9 +439,14 @@ export const WishlistDetailScreen: React.FC = () => {
                   type="text"
                   value={newItem.title}
                   onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    errors.title ? 'border-red-300' : 'border-gray-300'
+                  }`}
                   placeholder="Название товара"
+                  maxLength={200}
+                  disabled={submitting}
                 />
+                {errors.title && <p className="text-red-600 text-xs mt-1">{errors.title}</p>}
               </div>
 
               <div>
@@ -399,9 +457,15 @@ export const WishlistDetailScreen: React.FC = () => {
                   type="number"
                   value={newItem.price}
                   onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    errors.price ? 'border-red-300' : 'border-gray-300'
+                  }`}
                   placeholder="0"
+                  min="0"
+                  max="10000000"
+                  disabled={submitting}
                 />
+                {errors.price && <p className="text-red-600 text-xs mt-1">{errors.price}</p>}
               </div>
 
               <div className="md:col-span-2">
@@ -411,10 +475,15 @@ export const WishlistDetailScreen: React.FC = () => {
                 <textarea
                   value={newItem.description}
                   onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    errors.description ? 'border-red-300' : 'border-gray-300'
+                  }`}
                   rows={2}
                   placeholder="Описание товара"
+                  maxLength={1000}
+                  disabled={submitting}
                 />
+                {errors.description && <p className="text-red-600 text-xs mt-1">{errors.description}</p>}
               </div>
 
               <div>
@@ -425,19 +494,41 @@ export const WishlistDetailScreen: React.FC = () => {
                   type="url"
                   value={newItem.image_url}
                   onChange={(e) => setNewItem({ ...newItem, image_url: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    errors.image_url ? 'border-red-300' : 'border-gray-300'
+                  }`}
                   placeholder="https://..."
+                  disabled={submitting}
                 />
+                {errors.image_url && <p className="text-red-600 text-xs mt-1">{errors.image_url}</p>}
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ссылка на магазин
+                </label>
+                <input
+                  type="url"
+                  value={newItem.store_url}
+                  onChange={(e) => setNewItem({ ...newItem, store_url: e.target.value })}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    errors.store_url ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="https://..."
+                  disabled={submitting}
+                />
+                {errors.store_url && <p className="text-red-600 text-xs mt-1">{errors.store_url}</p>}
+              </div>
+
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Приоритет
                 </label>
                 <select
                   value={newItem.priority}
                   onChange={(e) => setNewItem({ ...newItem, priority: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                  disabled={submitting}
                 >
                   <option value="low">Низкий</option>
                   <option value="medium">Средний</option>
@@ -448,17 +539,33 @@ export const WishlistDetailScreen: React.FC = () => {
 
             <div className="flex space-x-3 mt-6">
               <button
-                onClick={() => setShowAddForm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setErrors({});
+                  setNewItem({
+                    title: '',
+                    description: '',
+                    price: '',
+                    image_url: '',
+                    store_url: '',
+                    priority: 'medium'
+                  });
+                }}
+                disabled={submitting}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Отмена
               </button>
               <button
                 onClick={addItem}
-                disabled={!newItem.title.trim()}
-                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                disabled={submitting || !newItem.title.trim()}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
-                Добавить товар
+                {submitting ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                ) : (
+                  <span>Добавить товар</span>
+                )}
               </button>
             </div>
           </div>
@@ -493,12 +600,16 @@ export const WishlistDetailScreen: React.FC = () => {
                         src={item.image_url}
                         alt={item.title}
                         className="w-20 h-20 object-cover rounded-lg"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.nextElementSibling?.classList.remove('hidden');
+                        }}
                       />
-                    ) : (
-                      <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-                        <ShoppingCart className="h-8 w-8 text-gray-400" />
-                      </div>
-                    )}
+                    ) : null}
+                    <div className={`w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center ${item.image_url ? 'hidden' : ''}`}>
+                      <ShoppingCart className="h-8 w-8 text-gray-400" />
+                    </div>
                   </div>
 
                   {/* Content */}

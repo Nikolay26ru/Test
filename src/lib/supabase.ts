@@ -19,6 +19,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: true,
     flowType: 'pkce'
+  },
+  global: {
+    headers: {
+      'x-client-info': 'wishflick-app@1.0.0'
+    }
+  },
+  db: {
+    schema: 'public'
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    }
   }
 })
 
@@ -27,3 +40,14 @@ if (typeof window !== 'undefined') {
   (window as any).supabase = supabase;
   console.log('🔧 Supabase: Client available globally as window.supabase');
 }
+
+// Проверяем подключение при инициализации
+supabase.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    console.warn('⚠️ Supabase: Session check failed:', error.message);
+  } else {
+    console.log('✅ Supabase: Connection established successfully');
+  }
+}).catch((error) => {
+  console.error('❌ Supabase: Failed to establish connection:', error);
+});

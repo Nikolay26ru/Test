@@ -14,6 +14,8 @@ export const getAIRecommendations = async (
   request: AIRecommendationRequest
 ): Promise<AIRecommendationResponse> => {
   try {
+    console.log('🤖 Requesting AI recommendations...');
+    
     const response = await fetch('/.netlify/functions/gigachat', {
       method: 'POST',
       headers: {
@@ -36,18 +38,32 @@ export const getAIRecommendations = async (
     }
 
     const data = await response.json();
+    console.log('✅ AI recommendations received');
     return data;
   } catch (error) {
-    console.error('AI recommendations error:', error);
+    console.error('❌ AI recommendations error:', error);
+    
+    // Возвращаем fallback рекомендации
+    const fallbackRecommendations = `
+• **Умные часы Apple Watch или Samsung Galaxy Watch** (от 25,000 руб.) - для отслеживания здоровья и уведомлений
+• **Беспроводные наушники AirPods или Sony WH-1000XM4** (от 15,000 руб.) - для музыки и звонков
+• **Портативная колонка JBL или Marshall** (от 8,000 руб.) - для домашних вечеринок
+• **Электронная книга Kindle или PocketBook** (от 12,000 руб.) - для любителей чтения
+• **Подарочный сертификат в любимый магазин** (любая сумма) - универсальный вариант
+    `.trim();
+
     return {
-      reply: 'Не удалось получить рекомендации. Попробуйте позже.',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      reply: fallbackRecommendations,
+      fallback: true,
+      error: 'AI временно недоступен, показаны общие рекомендации'
     };
   }
 };
 
 export const buildUserContext = async (userId: string, supabase: any): Promise<string> => {
   try {
+    console.log('🔍 Building user context for recommendations...');
+    
     // Получаем профиль пользователя
     const { data: profile } = await supabase
       .from('profiles')
@@ -77,6 +93,20 @@ export const buildUserContext = async (userId: string, supabase: any): Promise<s
       .from('user_interests')
       .select('category, keywords')
       .eq('user_id', userId);
+
+    // Получаем историю просмотров
+    const { data: views } = await supabase
+      .from('product_views')
+      .select(`
+        wishlist_item:wishlist_items (
+          title,
+          price,
+          priority
+        )
+      `)
+      .eq('user_id', userId)
+      .order('viewed_at', { ascending: false })
+      .limit(10);
 
     // Формируем контекст
     let context = '';
@@ -116,9 +146,23 @@ export const buildUserContext = async (userId: string, supabase: any): Promise<s
       }
     }
 
-    return context || 'Данные о предпочтениях пользователя отсутствуют';
+    if (views?.length > 0) {
+      const viewedItems = views
+        .map(v => v.wishlist_item)
+        .filter(Boolean)
+        .map(item => item.title)
+        .join(', ');
+      
+      if (viewedItems) {
+        context += `Недавно просмотренные товары: ${viewedItems}. `;
+      }
+    }
+
+    const finalContext = context || 'Данные о предпочтениях пользователя отсутствуют';
+    console.log('✅ User context built successfully');
+    return finalContext;
   } catch (error) {
-    console.error('Error building user context:', error);
+    console.error('❌ Error building user context:', error);
     return 'Не удалось загрузить контекст пользователя';
   }
 };

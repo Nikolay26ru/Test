@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { ValidationService } from '../../lib/validation';
+import { ErrorHandler } from '../../lib/errorHandler';
 
 interface EmailPasswordLoginProps {
   onSuccess: () => void;
@@ -22,14 +24,14 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {};
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email обязателен';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Неверный формат email';
+    const emailValidation = ValidationService.validateEmail(formData.email);
+    if (!emailValidation.isValid) {
+      newErrors.email = emailValidation.error!;
     }
 
-    if (!formData.password) {
-      newErrors.password = 'Пароль обязателен';
+    const passwordValidation = ValidationService.validatePassword(formData.password);
+    if (!passwordValidation.isValid) {
+      newErrors.password = passwordValidation.error!;
     }
 
     setErrors(newErrors);
@@ -42,9 +44,11 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
     if (!validateForm()) return;
 
     setLoading(true);
+    setErrors({});
+    
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password
       });
 
@@ -52,8 +56,8 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
 
       onSuccess();
     } catch (error: any) {
-      console.error('Login error:', error);
-      setErrors({ general: 'Неверный email или пароль' });
+      const errorMessage = ErrorHandler.handleAuthError(error);
+      setErrors({ general: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -90,10 +94,11 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+              className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                 errors.email ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="your@email.com"
+              disabled={loading}
             />
           </div>
           {errors.email && <p className="text-red-600 text-xs mt-1">{errors.email}</p>}
@@ -109,15 +114,17 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
               type={showPassword ? 'text' : 'password'}
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+              className={`w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                 errors.password ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="Ваш пароль"
+              disabled={loading}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              disabled={loading}
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -128,7 +135,7 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
         <button
           type="submit"
           disabled={loading}
-          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
         >
           {loading ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -144,7 +151,8 @@ export const EmailPasswordLogin: React.FC<EmailPasswordLoginProps> = ({
       <div className="mt-4 text-center">
         <button
           onClick={onSwitchToRegister}
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          disabled={loading}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
         >
           Нет аккаунта? Зарегистрироваться
         </button>
