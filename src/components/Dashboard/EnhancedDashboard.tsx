@@ -42,6 +42,22 @@ export const EnhancedDashboard: React.FC = () => {
   const loadWishlists = async () => {
     if (!user) return;
 
+    // Для гостей используем localStorage
+    if (user.is_guest) {
+      const guestWishlists = localStorage.getItem(`guest_wishlists_${user.id}`);
+      if (guestWishlists) {
+        try {
+          const parsed = JSON.parse(guestWishlists);
+          setWishlists(parsed);
+        } catch (error) {
+          console.error('Error parsing guest wishlists:', error);
+          setWishlists([]);
+        }
+      }
+      return;
+    }
+
+    // Для обычных пользователей используем Supabase
     const { data, error } = await supabase
       .from('wishlists')
       .select(`
@@ -59,6 +75,12 @@ export const EnhancedDashboard: React.FC = () => {
   };
 
   const loadCampaigns = async () => {
+    // Для гостей не показываем кампании
+    if (user?.is_guest) {
+      setCampaigns([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('campaigns')
       .select(`
@@ -90,6 +112,28 @@ export const EnhancedDashboard: React.FC = () => {
   }) => {
     if (!user) return;
 
+    // Для гостей сохраняем в localStorage
+    if (user.is_guest) {
+      const newWishlist = {
+        id: `guest_wishlist_${Date.now()}`,
+        ...data,
+        user_id: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        items: []
+      };
+
+      const existingWishlists = localStorage.getItem(`guest_wishlists_${user.id}`);
+      const wishlists = existingWishlists ? JSON.parse(existingWishlists) : [];
+      wishlists.unshift(newWishlist);
+      
+      localStorage.setItem(`guest_wishlists_${user.id}`, JSON.stringify(wishlists));
+      setWishlists(wishlists);
+      showToast('Список желаний успешно создан! (сохранен локально)');
+      return;
+    }
+
+    // Для обычных пользователей используем Supabase
     const { error } = await supabase
       .from('wishlists')
       .insert({
@@ -140,7 +184,7 @@ export const EnhancedDashboard: React.FC = () => {
     },
     {
       title: 'AI-рекомендации',
-      value: 'Новые',
+      value: user?.is_guest ? 'Ограничено' : 'Доступно',
       icon: Sparkles,
       color: 'green'
     }
@@ -171,11 +215,28 @@ export const EnhancedDashboard: React.FC = () => {
           </h1>
           <p className="text-gray-600">
             {user?.is_guest 
-              ? 'Вы вошли как гость. Зарегистрируйтесь для полного доступа к функциям.'
+              ? 'Вы вошли как гость. Ваши данные сохраняются локально в браузере. Зарегистрируйтесь для полного доступа к функциям.'
               : 'Управляйте своими списками желаний и получайте AI-рекомендации'
             }
           </p>
         </div>
+
+        {/* Guest Warning */}
+        {user?.is_guest && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-8">
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center">
+                <span className="text-white text-xs">!</span>
+              </div>
+              <div>
+                <h4 className="font-medium text-orange-800">Гостевой режим</h4>
+                <p className="text-sm text-orange-700">
+                  Ваши данные сохраняются только в этом браузере. Некоторые функции ограничены.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -210,6 +271,16 @@ export const EnhancedDashboard: React.FC = () => {
                 >
                   <tab.icon className="h-4 w-4" />
                   <span>{tab.label}</span>
+                  {tab.id === 'ai' && user?.is_guest && (
+                    <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
+                      Ограничено
+                    </span>
+                  )}
+                  {tab.id === 'crowdfunding' && user?.is_guest && (
+                    <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
+                      Недоступно
+                    </span>
+                  )}
                 </button>
               ))}
             </nav>
@@ -245,13 +316,34 @@ export const EnhancedDashboard: React.FC = () => {
                 Персональные рекомендации
               </h2>
               <p className="text-gray-600">
-                Получите умные советы на основе ваших интересов и предпочтений
+                {user?.is_guest 
+                  ? 'В гостевом режиме AI-рекомендации ограничены. Зарегистрируйтесь для полного доступа.'
+                  : 'Получите умные советы на основе ваших интересов и предпочтений'
+                }
               </p>
             </div>
             
-            <AIRecommendations 
-              onRecommendationClick={handleRecommendationClick}
-            />
+            {user?.is_guest ? (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-8 text-center">
+                <Sparkles className="h-12 w-12 text-orange-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-orange-800 mb-2">
+                  AI-рекомендации недоступны в гостевом режиме
+                </h3>
+                <p className="text-orange-700 mb-4">
+                  Зарегистрируйтесь для получения персональных рекомендаций от искусственного интеллекта
+                </p>
+                <button
+                  onClick={() => window.location.href = '/auth?mode=register'}
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700"
+                >
+                  Создать аккаунт
+                </button>
+              </div>
+            ) : (
+              <AIRecommendations 
+                onRecommendationClick={handleRecommendationClick}
+              />
+            )}
           </div>
         )}
 
@@ -262,11 +354,30 @@ export const EnhancedDashboard: React.FC = () => {
                 Активные кампании
               </h2>
               <p className="text-gray-600">
-                Поддержите мечты других пользователей или создайте свою кампанию
+                {user?.is_guest 
+                  ? 'Краудфандинг недоступен в гостевом режиме'
+                  : 'Поддержите мечты других пользователей или создайте свою кампанию'
+                }
               </p>
             </div>
             
-            {campaigns.length > 0 ? (
+            {user?.is_guest ? (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-8 text-center">
+                <Target className="h-12 w-12 text-orange-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-orange-800 mb-2">
+                  Краудфандинг недоступен в гостевом режиме
+                </h3>
+                <p className="text-orange-700 mb-4">
+                  Зарегистрируйтесь для участия в краудфандинге и создания собственных кампаний
+                </p>
+                <button
+                  onClick={() => window.location.href = '/auth?mode=register'}
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700"
+                >
+                  Создать аккаунт
+                </button>
+              </div>
+            ) : campaigns.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {campaigns.map((campaign) => (
                   <CrowdfundingCard

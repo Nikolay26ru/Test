@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { UserX, ArrowRight } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 
 interface GuestLoginProps {
   onSuccess: () => void;
@@ -38,22 +37,9 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
 
       console.log('✅ Guest user created:', guestUser);
       
-      // Пытаемся создать профиль в базе данных (необязательно)
-      try {
-        await supabase
-          .from('profiles')
-          .insert({
-            id: guestId,
-            name: username,
-            username: guestUser.username,
-            is_guest: true,
-            privacy_settings: 'public'
-          });
-        console.log('✅ Guest profile created in database');
-      } catch (dbError) {
-        console.warn('⚠️ Could not create guest profile in database, continuing with local storage');
-      }
-
+      // НЕ пытаемся создать профиль в базе данных для гостя
+      // Гостевые данные хранятся только в localStorage
+      
       onSuccess();
     } catch (error) {
       console.error('❌ Guest login error:', error);
@@ -111,6 +97,7 @@ export const GuestLogin: React.FC<GuestLoginProps> = ({ onSuccess }) => {
           <p>• Ваши данные будут сохранены в этом браузере</p>
           <p>• Вы сможете создавать списки и получать рекомендации</p>
           <p>• Для полного доступа рекомендуем зарегистрироваться</p>
+          <p>• Данные гостя не синхронизируются между устройствами</p>
         </div>
       </div>
     </div>
