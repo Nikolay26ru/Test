@@ -1,6 +1,6 @@
 export interface User {
   id: string;
-  email: string;
+  email?: string;
   name: string;
   avatar_url?: string;
   username?: string;
@@ -9,6 +9,7 @@ export interface User {
   is_guest?: boolean;
   interests?: string[];
   created_at: string;
+  updated_at?: string;
 }
 
 export interface WishList {
@@ -65,24 +66,6 @@ export interface Donation {
   created_at: string;
 }
 
-export interface AIRecommendation {
-  id: string;
-  user_id: string;
-  recommendations_text: string;
-  context_hash: string;
-  expires_at: string;
-  created_at: string;
-}
-
-export interface UserInterest {
-  id: string;
-  user_id: string;
-  category: string;
-  keywords: string[];
-  weight: number;
-  created_at: string;
-}
-
 export interface Friendship {
   id: string;
   user_id: string;
@@ -102,27 +85,19 @@ export interface FriendRequest {
   receiver?: User;
 }
 
-export interface ProductView {
-  id: string;
-  user_id: string;
-  wishlist_item_id: string;
-  viewed_at: string;
-}
+export type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'friends';
 
-export interface ProductRecommendation {
-  id: string;
-  user_id: string;
-  recommended_items: any[];
-  view_count: number;
-  created_at: string;
-  expires_at: string;
+export interface ApiResponse<T = any> {
+  data?: T;
+  error?: string;
+  success: boolean;
 }
 
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInAsGuest: (guestName?: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<User>) => Promise<boolean>;
 }
-
-export type FriendshipStatus = 'none' | 'pending_sent' | 'pending_received' | 'friends';
